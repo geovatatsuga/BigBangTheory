@@ -39,3 +39,7 @@ To deploy:
 4. Deploy.
 
 No environment variables are required for the current app.
+
+## Maintenance
+
+For AI-assisted edits and a map of where each simulation behavior lives, see [docs/AI_MAINTENANCE.md](docs/AI_MAINTENANCE.md).
