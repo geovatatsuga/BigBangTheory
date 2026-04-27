@@ -1099,7 +1099,7 @@ const milkyWayConfig: ShowcaseGalaxyConfig = {
 
 function MilkyWayDestination({ visible, progress }: { visible: number; progress: number }) {
   const groupRef = useRef<THREE.Group>(null);
-  const beacon = smoothstep(88, 94, progress) * (1 - smoothstep(96, 99, progress));
+  const beacon = smoothstep(86, 92, progress) * (1 - smoothstep(96, 98.5, progress));
 
   useFrame((state) => {
     if (!groupRef.current) return;
@@ -1110,7 +1110,7 @@ function MilkyWayDestination({ visible, progress }: { visible: number; progress:
   if (visible <= 0.01) return null;
 
   return (
-    <group ref={groupRef} position={[118, -20, 44]} rotation={[1.08, -0.18, -0.16]} scale={visible * 0.82}>
+    <group ref={groupRef} position={[116, -18, 160]} rotation={[1.08, -0.18, -0.16]} scale={visible * 0.82}>
       <ShowcaseGalaxy
         visible={visible}
         config={milkyWayConfig}
@@ -1168,7 +1168,7 @@ function SolarDustDisk({ visible, progress }: { visible: number; progress: numbe
   const pointsRef = useRef<THREE.Points>(null);
   const material = useMemo(() => makeGlowMaterial(), []);
   const field = useMemo(() => createSolarDustField(), []);
-  const birth = smoothstep(90, 95, progress);
+  const birth = smoothstep(94, 97, progress);
 
   useFrame((state) => {
     material.uniforms.uTime.value = state.clock.elapsedTime;
@@ -1194,12 +1194,12 @@ function SolarDustDisk({ visible, progress }: { visible: number; progress: numbe
 }
 
 function LocalSolarReference({ visible, progress }: { visible: number; progress: number }) {
-  const birth = smoothstep(90, 95, progress);
-  const planets = smoothstep(94, 97, progress);
+  const birth = smoothstep(94, 97, progress);
+  const planets = smoothstep(96, 98.5, progress);
   if (visible <= 0.01) return null;
 
   return (
-    <group position={[152, -34, 54]} rotation={[0.95, 0, -0.08]} scale={visible * 0.22}>
+    <group position={[152, -42, 170]} rotation={[0.95, 0, -0.08]} scale={visible * 0.24}>
       <SolarDustDisk visible={visible} progress={progress} />
       <mesh>
         <sphereGeometry args={[THREE.MathUtils.lerp(4, 8.5, birth), 32, 32]} />
@@ -1262,20 +1262,19 @@ const warpStreakData = (() => {
 function WarpStreaks() {
   const { progress, activeMode } = useUniverseStore();
   const groupRef = useRef<THREE.Group>(null);
-  const dive = smoothstep(84, 90.5, progress) * (1 - smoothstep(93.8, 96.8, progress));
-  const exit = smoothstep(98, 100, progress);
-  const visible = activeMode === 'timeline' ? Math.max(dive, exit * 0.72) : 0;
+  const dive = smoothstep(82, 87, progress) * (1 - smoothstep(93, 95.5, progress));
+  const visible = activeMode === 'timeline' ? dive : 0;
 
   useFrame((state) => {
     if (!groupRef.current) return;
-    groupRef.current.position.z = 122 + Math.sin(state.clock.elapsedTime * 9.5) * 22;
+    groupRef.current.position.z = 170 + Math.sin(state.clock.elapsedTime * 9.5) * 22;
     groupRef.current.rotation.z = state.clock.elapsedTime * 0.045;
   });
 
   if (visible <= 0.01) return null;
 
   return (
-    <group ref={groupRef} position={[0, 0, 122]} scale={1 + visible * 0.45}>
+    <group ref={groupRef} position={[0, 0, 170]} scale={1 + visible * 0.45}>
       <lineSegments>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" count={WARP_STREAK_COUNT * 2} array={warpStreakData.positions} itemSize={3} />
@@ -1387,21 +1386,23 @@ function ScaleJourney() {
   if (visible <= 0.01) return null;
 
   return (
-    <group ref={groupRef} position={[0, -8, 104]}>
-      <MilkyWayDestination visible={visible * smoothstep(82, 88, progress)} progress={progress} />
-      {showcaseGalaxies.map((galaxy, index) => (
-        <ShowcaseGalaxy
-          key={index}
-          visible={visible}
-          config={galaxy.config}
-          position={galaxy.position}
-          rotation={galaxy.rotation}
-          scale={galaxy.scale}
-          drift={galaxy.drift}
-        />
-      ))}
+    <>
+      <group ref={groupRef} position={[0, -8, 104]}>
+        {showcaseGalaxies.map((galaxy, index) => (
+          <ShowcaseGalaxy
+            key={index}
+            visible={visible}
+            config={galaxy.config}
+            position={galaxy.position}
+            rotation={galaxy.rotation}
+            scale={galaxy.scale}
+            drift={galaxy.drift}
+          />
+        ))}
+      </group>
+      <MilkyWayDestination visible={visible * smoothstep(80, 86, progress)} progress={progress} />
       <LocalSolarReference visible={visible * smoothstep(94, 97, progress)} progress={progress} />
-    </group>
+    </>
   );
 }
 
