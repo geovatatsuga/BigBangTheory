@@ -169,9 +169,11 @@ export function getVisualProfile(progress: number): VisualProfile {
   const webT = smoothstep(85, 100, progress);
   if (progress < 98) {
     return {
-      title: 'Nascimento do Sol',
+      title: progress < 93 ? 'Rumo a Via Lactea' : 'Nascimento do Sol',
       scaleLabel: '9 bilhoes de anos',
-      caption: 'Uma nuvem de poeira estelar colapsa e o Sistema Solar comeca a se formar.',
+      caption: progress < 93
+        ? 'A camera mergulha pela rede cosmica em direcao a regiao onde o Sol vai nascer.'
+        : 'Uma nuvem de poeira estelar colapsa, acende o Sol e revela os primeiros planetas.',
       light: 1,
       gas: 0.15 - webT * 0.05,
       stars: 1,

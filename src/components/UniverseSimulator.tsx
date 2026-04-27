@@ -1087,27 +1087,156 @@ function ShowcaseGalaxy({
   );
 }
 
-function LocalSolarReference({ visible, progress }: { visible: number; progress: number }) {
+function createSolarDustField(count = 900): ShowcaseField {
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const alphas = new Float32Array(count);
+  const sizes = new Float32Array(count);
+  const seeds = new Float32Array(count);
+  const color = new THREE.Color();
+
+  for (let i = 0; i < count; i++) {
+    const base = i * 3;
+    const seed = Math.random();
+    const radius = Math.pow(Math.random(), 0.52) * 72 + 8;
+    const angle = seed * Math.PI * 2 * 19;
+    const band = Math.sin(seed * 80) * 4;
+
+    positions[base] = Math.cos(angle) * radius;
+    positions[base + 1] = band + (Math.random() - 0.5) * 4;
+    positions[base + 2] = Math.sin(angle) * radius * 0.42;
+
+    color.setHSL(seed > 0.72 ? 0.58 : 0.09, seed > 0.72 ? 0.55 : 0.86, seed > 0.72 ? 0.72 : 0.58);
+    colors[base] = color.r;
+    colors[base + 1] = color.g;
+    colors[base + 2] = color.b;
+    alphas[i] = 0.18 + seed * 0.55;
+    sizes[i] = 2 + seed * 5.5;
+    seeds[i] = seed;
+  }
+
+  return { count, positions, colors, alphas, sizes, seeds };
+}
+
+function SolarDustDisk({ visible, progress }: { visible: number; progress: number }) {
+  const pointsRef = useRef<THREE.Points>(null);
+  const material = useMemo(() => makeGlowMaterial(), []);
+  const field = useMemo(() => createSolarDustField(), []);
+  const birth = smoothstep(90, 95, progress);
+
+  useFrame((state) => {
+    material.uniforms.uTime.value = state.clock.elapsedTime;
+    if (!pointsRef.current) return;
+    pointsRef.current.rotation.z = state.clock.elapsedTime * 0.085;
+    pointsRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.12) * 0.08;
+    pointsRef.current.scale.setScalar(THREE.MathUtils.lerp(1.15, 0.74, birth));
+  });
+
   if (visible <= 0.01) return null;
 
   return (
-    <group position={[152, -34, 54]} rotation={[0.95, 0, -0.08]} scale={visible * 0.18}>
+    <points ref={pointsRef} material={material}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" count={field.count} array={field.positions} itemSize={3} />
+        <bufferAttribute attach="attributes-color" count={field.count} array={field.colors} itemSize={3} />
+        <bufferAttribute attach="attributes-alpha" count={field.count} array={field.alphas} itemSize={1} />
+        <bufferAttribute attach="attributes-size" count={field.count} array={field.sizes} itemSize={1} />
+        <bufferAttribute attach="attributes-seed" count={field.count} array={field.seeds} itemSize={1} />
+      </bufferGeometry>
+    </points>
+  );
+}
+
+function LocalSolarReference({ visible, progress }: { visible: number; progress: number }) {
+  const birth = smoothstep(90, 95, progress);
+  const planets = smoothstep(94, 97, progress);
+  if (visible <= 0.01) return null;
+
+  return (
+    <group position={[152, -34, 54]} rotation={[0.95, 0, -0.08]} scale={visible * 0.22}>
+      <SolarDustDisk visible={visible} progress={progress} />
       <mesh>
-        <sphereGeometry args={[7, 32, 32]} />
-        <meshBasicMaterial color="#fde047" transparent opacity={0.7} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <sphereGeometry args={[THREE.MathUtils.lerp(4, 8.5, birth), 32, 32]} />
+        <meshBasicMaterial color="#fde047" transparent opacity={0.28 + birth * 0.52} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+      <mesh scale={1 + birth * 2.6}>
+        <sphereGeometry args={[10, 32, 32]} />
+        <meshBasicMaterial color="#facc15" transparent opacity={birth * 0.08} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
       {[18, 28, 41, 56].map((radius, index) => (
         <group key={radius}>
           <mesh>
             <torusGeometry args={[radius, 0.16, 8, 128]} />
-            <meshBasicMaterial color="#94a3b8" transparent opacity={0.1} depthWrite={false} />
+            <meshBasicMaterial color="#94a3b8" transparent opacity={0.04 + planets * 0.08} depthWrite={false} />
           </mesh>
           <mesh position={[Math.cos(index * 1.7 + progress * 0.035) * radius, Math.sin(index * 1.7 + progress * 0.035) * radius, 0]}>
             <sphereGeometry args={[index === 2 ? 2.2 : index === 3 ? 1.8 : 1.4, 16, 16]} />
-            <meshBasicMaterial color={index === 2 ? '#3b82f6' : index === 3 ? '#ef4444' : index === 1 ? '#e2e8f0' : '#a7f3d0'} transparent opacity={0.8} />
+            <meshBasicMaterial color={index === 2 ? '#3b82f6' : index === 3 ? '#ef4444' : index === 1 ? '#e2e8f0' : '#a7f3d0'} transparent opacity={planets * 0.86} />
           </mesh>
         </group>
       ))}
+    </group>
+  );
+}
+
+const WARP_STREAK_COUNT = 84;
+const warpStreakData = (() => {
+  const positions = new Float32Array(WARP_STREAK_COUNT * 2 * 3);
+  const colors = new Float32Array(WARP_STREAK_COUNT * 2 * 3);
+  const color = new THREE.Color();
+
+  for (let i = 0; i < WARP_STREAK_COUNT; i++) {
+    const pair = i * 6;
+    const radius = 34 + Math.random() * 180;
+    const angle = Math.random() * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius * 0.58;
+    const z = -220 + Math.random() * 360;
+    const length = 18 + Math.random() * 54;
+
+    positions[pair] = x;
+    positions[pair + 1] = y;
+    positions[pair + 2] = z;
+    positions[pair + 3] = x * 0.84;
+    positions[pair + 4] = y * 0.84;
+    positions[pair + 5] = z + length;
+
+    color.setHSL(Math.random() > 0.7 ? 0.1 : 0.58, 0.8, 0.68 + Math.random() * 0.18);
+    colors[pair] = color.r;
+    colors[pair + 1] = color.g;
+    colors[pair + 2] = color.b;
+    colors[pair + 3] = color.r;
+    colors[pair + 4] = color.g;
+    colors[pair + 5] = color.b;
+  }
+
+  return { positions, colors };
+})();
+
+function WarpStreaks() {
+  const { progress, activeMode } = useUniverseStore();
+  const groupRef = useRef<THREE.Group>(null);
+  const dive = smoothstep(88, 92.5, progress) * (1 - smoothstep(94.8, 97.5, progress));
+  const exit = smoothstep(96, 98.5, progress);
+  const visible = activeMode === 'timeline' ? Math.max(dive, exit * 0.72) : 0;
+
+  useFrame((state) => {
+    if (!groupRef.current) return;
+    groupRef.current.position.z = 122 + Math.sin(state.clock.elapsedTime * 9.5) * 22;
+    groupRef.current.rotation.z = state.clock.elapsedTime * 0.045;
+  });
+
+  if (visible <= 0.01) return null;
+
+  return (
+    <group ref={groupRef} position={[0, 0, 122]} scale={1 + visible * 0.45}>
+      <lineSegments>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" count={WARP_STREAK_COUNT * 2} array={warpStreakData.positions} itemSize={3} />
+          <bufferAttribute attach="attributes-color" count={WARP_STREAK_COUNT * 2} array={warpStreakData.colors} itemSize={3} />
+        </bufferGeometry>
+        <lineBasicMaterial vertexColors transparent opacity={visible * 0.76} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </lineSegments>
     </group>
   );
 }
@@ -1248,6 +1377,7 @@ export default function UniverseSimulator() {
         <BackgroundStarField />
         <CosmicNebulaField />
         <TransitionEffects />
+        <WarpStreaks />
         <CosmicParticles field={field} />
         <CenterlessExpansionVectors field={field} />
         <CameraDirector />
