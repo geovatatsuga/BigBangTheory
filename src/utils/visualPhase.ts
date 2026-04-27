@@ -51,7 +51,7 @@ function getCameraDistance(progress: number) {
   if (progress < 75) return 298 + smoothstep(65, 75, progress) * 62;
   // Spiral-clusters: zoom in closer to appreciate the dense spiral arms
   if (progress < 85) return 360 - smoothstep(75, 85, progress) * 60; // zoom in to 300
-  return 360 + smoothstep(85, 100, progress) * 120; // slow pull-back: expanding universe feel
+  return 300 + smoothstep(85, 100, progress) * 180; // slow pull-back: expanding universe feel
 }
 
 export function getVisualProfile(progress: number): VisualProfile {
