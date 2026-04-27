@@ -7,7 +7,7 @@ import CameraDirector from './universe/CameraDirector';
 import { CenterlessMarker, CinematicHud } from './universe/SceneHud';
 import { applyPhaseColor, getParticleAlpha, getParticleSize, getScale } from './universe/particleAppearance';
 
-const NUM_PARTICLES = 26000;
+const NUM_PARTICLES = 18000;
 const BOUNDS = 820;
 const VECTOR_COUNT = 34;
 const PARTICLE_RAYCASTER = { params: { Points: { threshold: 7 } } } as any;
@@ -385,6 +385,7 @@ function CosmicParticles({ field }: { field: ParticleField }) {
   const material = useMemo(() => makeGlowMaterial(), []);
   const color = useMemo(() => new THREE.Color(), []);
   const anchorColor = useMemo(() => new THREE.Color(), []);
+  const lastAppearanceRef = useRef({ progress: -999, activeMode: '', selected: -1 });
   const shouldRenderParticles = true;
 
   useFrame((state) => {
@@ -400,6 +401,11 @@ function CosmicParticles({ field }: { field: ParticleField }) {
     const phase = getVisualPhase(progress);
     const time = state.clock.elapsedTime;
     const selected = observerIndex ?? Math.floor(NUM_PARTICLES * 0.38);
+    const lastAppearance = lastAppearanceRef.current;
+    const shouldUpdateAppearance =
+      Math.abs(progress - lastAppearance.progress) > 0.35 ||
+      lastAppearance.activeMode !== activeMode ||
+      lastAppearance.selected !== selected;
     const observerX = activeMode === 'centerless' ? field.basePositions[selected * 3] * scale : 0;
     const observerY = activeMode === 'centerless' ? field.basePositions[selected * 3 + 1] * scale : 0;
     const observerZ = activeMode === 'centerless' ? field.basePositions[selected * 3 + 2] * scale : 0;
@@ -578,6 +584,7 @@ function CosmicParticles({ field }: { field: ParticleField }) {
       positions[base] = x;
       positions[base + 1] = y;
       positions[base + 2] = z;
+      if (shouldUpdateAppearance) {
       applyPhaseColor(color, progress, seed, kind);
       const colorAnchor = field.anchorIndex[i];
       if (colorAnchor >= 0 && progress >= 58) {
@@ -603,12 +610,16 @@ function CosmicParticles({ field }: { field: ParticleField }) {
       colors[base] = color.r;
       colors[base + 1] = color.g;
       colors[base + 2] = color.b;
+      }
     }
 
     pointsRef.current.geometry.attributes.position.needsUpdate = true;
-    pointsRef.current.geometry.attributes.color.needsUpdate = true;
-    pointsRef.current.geometry.attributes.alpha.needsUpdate = true;
-    pointsRef.current.geometry.attributes.size.needsUpdate = true;
+    if (shouldUpdateAppearance) {
+      pointsRef.current.geometry.attributes.color.needsUpdate = true;
+      pointsRef.current.geometry.attributes.alpha.needsUpdate = true;
+      pointsRef.current.geometry.attributes.size.needsUpdate = true;
+      lastAppearanceRef.current = { progress, activeMode, selected };
+    }
   });
 
   if (!shouldRenderParticles) return null;
@@ -706,7 +717,7 @@ function PlasmaFog() {
 }
 
 // ── Background star-field: dense tiny stars fading in from first-stars phase ──
-const BG_STAR_COUNT = 18000;
+const BG_STAR_COUNT = 9000;
 const bgStarData = (() => {
   const positions = new Float32Array(BG_STAR_COUNT * 3);
   const colors    = new Float32Array(BG_STAR_COUNT * 3);
@@ -739,18 +750,21 @@ function BackgroundStarField() {
   const { progress } = useUniverseStore();
   const pointsRef = useRef<THREE.Points>(null);
   const material  = useMemo(() => makeGlowMaterial(), []);
+  const lastProgressRef = useRef(-999);
 
   useFrame((state) => {
     if (!pointsRef.current) return;
     material.uniforms.uTime.value = state.clock.elapsedTime;
+    if (Math.abs(progress - lastProgressRef.current) < 0.3) return;
+
     const arr = pointsRef.current.geometry.attributes.alpha.array as Float32Array;
     const base = smoothstep(62, 84, progress);
     for (let i = 0; i < BG_STAR_COUNT; i++) {
       const s = bgStarData.seeds[i];
-      const twinkle = 0.82 + Math.sin(state.clock.elapsedTime * (1.1 + s * 2.6) + s * 47) * 0.18;
-      arr[i] = base * (0.28 + s * 0.52) * twinkle;
+      arr[i] = base * (0.3 + s * 0.58);
     }
     pointsRef.current.geometry.attributes.alpha.needsUpdate = true;
+    lastProgressRef.current = progress;
   });
 
   if (smoothstep(62, 84, progress) <= 0.01) return null;
@@ -768,7 +782,7 @@ function BackgroundStarField() {
 }
 
 // ── Nebula clouds: large colorful gaseous puffs floating between galaxies ──
-const NEBULA_COUNT = 420;
+const NEBULA_COUNT = 240;
 const nebulaData = (() => {
   const positions = new Float32Array(NEBULA_COUNT * 3);
   const colors    = new Float32Array(NEBULA_COUNT * 3);
@@ -1223,7 +1237,8 @@ export default function UniverseSimulator() {
     <div className="absolute inset-0 z-0 h-full w-full bg-transparent">
       <Canvas
         camera={{ position: [0, 16, 150], fov: 58 }}
-        gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
+        dpr={[1, 1.35]}
+        gl={{ antialias: false, alpha: false, powerPreference: 'high-performance' }}
         raycaster={PARTICLE_RAYCASTER}
       >
         <SceneBackground />
