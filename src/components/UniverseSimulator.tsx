@@ -1100,6 +1100,8 @@ const milkyWayConfig: ShowcaseGalaxyConfig = {
 function MilkyWayDestination({ visible, progress }: { visible: number; progress: number }) {
   const groupRef = useRef<THREE.Group>(null);
   const beacon = smoothstep(86, 92, progress) * (1 - smoothstep(96, 98.5, progress));
+  const solarCloseup = smoothstep(94, 97, progress);
+  const galaxyVisibility = visible * THREE.MathUtils.lerp(1, 0.22, solarCloseup);
 
   useFrame((state) => {
     if (!groupRef.current) return;
@@ -1107,12 +1109,12 @@ function MilkyWayDestination({ visible, progress }: { visible: number; progress:
     groupRef.current.position.y = -20 + Math.sin(state.clock.elapsedTime * 0.35) * 1.2;
   });
 
-  if (visible <= 0.01) return null;
+  if (galaxyVisibility <= 0.01) return null;
 
   return (
-    <group ref={groupRef} position={[116, -18, 160]} rotation={[1.08, -0.18, -0.16]} scale={visible * 0.82}>
+    <group ref={groupRef} position={[116, -18, 160]} rotation={[1.08, -0.18, -0.16]} scale={galaxyVisibility * 0.82}>
       <ShowcaseGalaxy
-        visible={visible}
+        visible={galaxyVisibility}
         config={milkyWayConfig}
         position={[0, 0, 0]}
         rotation={[0, 0, 0]}
@@ -1196,27 +1198,36 @@ function SolarDustDisk({ visible, progress }: { visible: number; progress: numbe
 function LocalSolarReference({ visible, progress }: { visible: number; progress: number }) {
   const birth = smoothstep(94, 97, progress);
   const planets = smoothstep(96, 98.5, progress);
+  const closeup = smoothstep(94, 96.5, progress);
   if (visible <= 0.01) return null;
 
   return (
-    <group position={[152, -42, 170]} rotation={[0.95, 0, -0.08]} scale={visible * 0.24}>
+    <group position={[152, -42, 170]} rotation={[0.95, 0, -0.08]} scale={visible * THREE.MathUtils.lerp(0.32, 0.72, closeup)}>
+      <mesh renderOrder={-1} position={[0, 0, -6]} scale={[1.35, 0.82, 1]}>
+        <circleGeometry args={[96, 96]} />
+        <meshBasicMaterial color="#01030a" transparent opacity={0.72 * closeup} depthWrite={false} />
+      </mesh>
+      <mesh renderOrder={0} position={[0, 0, -4]} scale={[1.05, 0.56, 1]}>
+        <ringGeometry args={[62, 96, 96]} />
+        <meshBasicMaterial color="#0f172a" transparent opacity={0.22 * closeup} depthWrite={false} />
+      </mesh>
       <SolarDustDisk visible={visible} progress={progress} />
       <mesh>
-        <sphereGeometry args={[THREE.MathUtils.lerp(4, 8.5, birth), 32, 32]} />
+        <sphereGeometry args={[THREE.MathUtils.lerp(8, 13, birth), 32, 32]} />
         <meshBasicMaterial color="#fde047" transparent opacity={0.28 + birth * 0.52} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
       <mesh scale={1 + birth * 2.6}>
-        <sphereGeometry args={[10, 32, 32]} />
-        <meshBasicMaterial color="#facc15" transparent opacity={birth * 0.08} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <sphereGeometry args={[16, 32, 32]} />
+        <meshBasicMaterial color="#facc15" transparent opacity={birth * 0.12} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
-      {[18, 28, 41, 56].map((radius, index) => (
+      {[26, 42, 62, 84].map((radius, index) => (
         <group key={radius}>
           <mesh>
-            <torusGeometry args={[radius, 0.16, 8, 128]} />
-            <meshBasicMaterial color="#94a3b8" transparent opacity={0.04 + planets * 0.08} depthWrite={false} />
+            <torusGeometry args={[radius, 0.32, 8, 160]} />
+            <meshBasicMaterial color="#bae6fd" transparent opacity={0.08 + planets * 0.22} depthWrite={false} />
           </mesh>
           <mesh position={[Math.cos(index * 1.7 + progress * 0.035) * radius, Math.sin(index * 1.7 + progress * 0.035) * radius, 0]}>
-            <sphereGeometry args={[index === 2 ? 2.2 : index === 3 ? 1.8 : 1.4, 16, 16]} />
+            <sphereGeometry args={[index === 2 ? 4.4 : index === 3 ? 3.6 : 2.8, 20, 20]} />
             <meshBasicMaterial color={index === 2 ? '#3b82f6' : index === 3 ? '#ef4444' : index === 1 ? '#e2e8f0' : '#a7f3d0'} transparent opacity={planets * 0.86} />
           </mesh>
         </group>

@@ -43,7 +43,7 @@ export default function CameraDirector() {
       THREE.MathUtils.lerp(overviewPosition.z, 330, solarDive)
     );
     const galacticArmPosition = new THREE.Vector3(132, -18, 246);
-    const solarPosition = new THREE.Vector3(166, -40, 222);
+    const solarPosition = new THREE.Vector3(152, -42, 118);
     const exitPosition = new THREE.Vector3(34, 18, profile.cameraDistance);
     const cinematicPosition = divePosition
       .lerp(galacticArmPosition, galaxyArmDive)
