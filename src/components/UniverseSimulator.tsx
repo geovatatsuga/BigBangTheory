@@ -1087,6 +1087,52 @@ function ShowcaseGalaxy({
   );
 }
 
+const milkyWayConfig: ShowcaseGalaxyConfig = {
+  count: 5200,
+  arms: 4,
+  radius: 118,
+  depth: 10,
+  twist: 0.064,
+  core: 56,
+  hueShift: 0.18
+};
+
+function MilkyWayDestination({ visible, progress }: { visible: number; progress: number }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const beacon = smoothstep(88, 94, progress) * (1 - smoothstep(96, 99, progress));
+
+  useFrame((state) => {
+    if (!groupRef.current) return;
+    groupRef.current.rotation.z = -0.16 + state.clock.elapsedTime * 0.006;
+    groupRef.current.position.y = -20 + Math.sin(state.clock.elapsedTime * 0.35) * 1.2;
+  });
+
+  if (visible <= 0.01) return null;
+
+  return (
+    <group ref={groupRef} position={[118, -20, 44]} rotation={[1.08, -0.18, -0.16]} scale={visible * 0.82}>
+      <ShowcaseGalaxy
+        visible={visible}
+        config={milkyWayConfig}
+        position={[0, 0, 0]}
+        rotation={[0, 0, 0]}
+        scale={1}
+        drift={0.2}
+      />
+      <group position={[38, -7, 18]} scale={beacon}>
+        <mesh>
+          <torusGeometry args={[10, 0.32, 8, 72]} />
+          <meshBasicMaterial color="#67e8f9" transparent opacity={0.72} blending={THREE.AdditiveBlending} depthWrite={false} />
+        </mesh>
+        <mesh scale={1.8}>
+          <sphereGeometry args={[5, 24, 24]} />
+          <meshBasicMaterial color="#fef3c7" transparent opacity={0.18} blending={THREE.AdditiveBlending} depthWrite={false} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
 function createSolarDustField(count = 900): ShowcaseField {
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
@@ -1216,8 +1262,8 @@ const warpStreakData = (() => {
 function WarpStreaks() {
   const { progress, activeMode } = useUniverseStore();
   const groupRef = useRef<THREE.Group>(null);
-  const dive = smoothstep(88, 92.5, progress) * (1 - smoothstep(94.8, 97.5, progress));
-  const exit = smoothstep(96, 98.5, progress);
+  const dive = smoothstep(84, 90.5, progress) * (1 - smoothstep(93.8, 96.8, progress));
+  const exit = smoothstep(98, 100, progress);
   const visible = activeMode === 'timeline' ? Math.max(dive, exit * 0.72) : 0;
 
   useFrame((state) => {
@@ -1342,6 +1388,7 @@ function ScaleJourney() {
 
   return (
     <group ref={groupRef} position={[0, -8, 104]}>
+      <MilkyWayDestination visible={visible * smoothstep(82, 88, progress)} progress={progress} />
       {showcaseGalaxies.map((galaxy, index) => (
         <ShowcaseGalaxy
           key={index}
@@ -1353,7 +1400,7 @@ function ScaleJourney() {
           drift={galaxy.drift}
         />
       ))}
-      <LocalSolarReference visible={visible * smoothstep(90, 96, progress)} progress={progress} />
+      <LocalSolarReference visible={visible * smoothstep(94, 97, progress)} progress={progress} />
     </group>
   );
 }

@@ -8,6 +8,7 @@ function getPlaybackSpeed(progress: number) {
   if (progress < 65) return 1.75;
   if (progress < 75) return 1.35;
   if (progress < 85) return 1.05;
+  if (progress < 98) return 0.62;
   return 0.86;
 }
 
