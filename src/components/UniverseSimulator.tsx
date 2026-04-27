@@ -1210,7 +1210,7 @@ function ScaleJourney() {
           drift={galaxy.drift}
         />
       ))}
-      <LocalSolarReference visible={visible * smoothstep(96, 100, progress)} progress={progress} />
+      <LocalSolarReference visible={visible * smoothstep(90, 96, progress)} progress={progress} />
     </group>
   );
 }

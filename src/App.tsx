@@ -32,7 +32,7 @@ export default function App() {
             initial={{ y: 120, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 120, opacity: 0 }}
-            className="h-20 timeline-shell px-7 z-20 shrink-0 grid grid-cols-[auto_1fr] items-center gap-5"
+            className="h-28 timeline-shell px-7 z-20 shrink-0 grid grid-cols-[auto_1fr] items-center gap-5"
           >
             <PlayControls />
             <TimelineSlider />
