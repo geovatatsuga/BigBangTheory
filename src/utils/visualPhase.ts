@@ -168,16 +168,10 @@ export function getVisualProfile(progress: number): VisualProfile {
 
   const webT = smoothstep(85, 100, progress);
   if (progress < 98) {
-    const approachingMilkyWay = progress < 88;
-    const enteringArm = progress >= 88 && progress < 94;
     return {
-      title: approachingMilkyWay ? 'Avistando a Via Lactea' : enteringArm ? 'Queda no braco galactico' : 'Nascimento do Sol',
+      title: 'Nascimento do Sol',
       scaleLabel: '9 bilhoes de anos',
-      caption: approachingMilkyWay
-        ? 'A viagem desacelera diante da galaxia que vai abrigar o Sistema Solar.'
-        : enteringArm
-          ? 'Entramos em um braco da Via Lactea e seguimos ate a nuvem onde o Sol vai nascer.'
-          : 'A nuvem de poeira colapsa, o Sol acende e os primeiros planetas aparecem.',
+      caption: 'Uma nuvem de poeira estelar colapsa e o Sistema Solar comeca a se formar.',
       light: 1,
       gas: 0.15 - webT * 0.05,
       stars: 1,

@@ -27,45 +27,17 @@ export default function CameraDirector() {
     const profile = getVisualProfile(progress);
     const orbit = state.clock.elapsedTime * 0.12;
     const lateOrbit = smoothstep(72, 90, progress);
-    const solarDive = smoothstep(82, 88.5, progress);
-    const galaxyArmDive = smoothstep(88.5, 94, progress);
-    const solarReveal = smoothstep(92.5, 96.5, progress);
-    const solarExit = smoothstep(98, 100, progress);
-    const cinematicSolar = progress >= 82 && progress < 99;
-    const overviewPosition = new THREE.Vector3(
-      Math.sin(orbit) * THREE.MathUtils.lerp(18, 42, lateOrbit),
-      16 + Math.sin(orbit * 0.7) * 10,
-      profile.cameraDistance
-    );
-    const divePosition = new THREE.Vector3(
-      THREE.MathUtils.lerp(overviewPosition.x, 72, solarDive),
-      THREE.MathUtils.lerp(overviewPosition.y, 42, solarDive),
-      THREE.MathUtils.lerp(overviewPosition.z, 330, solarDive)
-    );
-    const galacticArmPosition = new THREE.Vector3(132, -18, 246);
-    const solarPosition = new THREE.Vector3(150, -44, 58);
-    const exitPosition = new THREE.Vector3(34, 18, profile.cameraDistance);
-    const cinematicPosition = divePosition
-      .lerp(galacticArmPosition, galaxyArmDive)
-      .lerp(solarPosition, solarReveal)
-      .lerp(exitPosition, solarExit);
-    const targetPosition = cinematicSolar ? cinematicPosition : overviewPosition;
-    const targetFocus = cinematicSolar
-      ? new THREE.Vector3(
-          THREE.MathUtils.lerp(0, 116, solarDive),
-          THREE.MathUtils.lerp(0, -18, solarDive),
-          THREE.MathUtils.lerp(0, 160, solarDive)
-        ).lerp(new THREE.Vector3(152, -42, 170), Math.max(galaxyArmDive, solarReveal))
-        .lerp(new THREE.Vector3(0, 0, 0), solarExit)
-      : new THREE.Vector3(0, 0, 0);
+    const x = Math.sin(orbit) * THREE.MathUtils.lerp(18, 42, lateOrbit);
+    const y = 16 + Math.sin(orbit * 0.7) * 10;
+    const z = profile.cameraDistance;
 
-    controls.enabled = progress > 62 && !cinematicSolar;
+    controls.enabled = progress > 62;
     controls.enablePan = false;
     controls.enableZoom = true;
-    controls.autoRotate = progress > 72 && !cinematicSolar;
+    controls.autoRotate = progress > 72;
     controls.autoRotateSpeed = 0.06;
-    camera.position.lerp(targetPosition, cinematicSolar ? 0.045 : 0.032);
-    controls.target.lerp(targetFocus, cinematicSolar ? 0.055 : 0.05);
+    camera.position.lerp(new THREE.Vector3(x, y, z), 0.032);
+    controls.target.lerp(new THREE.Vector3(0, 0, 0), 0.05);
     controls.update();
   });
 

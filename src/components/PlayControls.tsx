@@ -3,13 +3,12 @@ import { Pause, Play, RotateCcw } from 'lucide-react';
 import { useUniverseStore } from '../store/useUniverseStore';
 
 function getPlaybackSpeed(progress: number) {
-  if (progress < 4) return 0.65;
-  if (progress < 12) return 1.75;
-  if (progress < 65) return 1.12;
-  if (progress < 75) return 0.92;
-  if (progress < 84) return 0.72;
-  if (progress < 98) return 0.34;
-  return 0.52;
+  if (progress < 4) return 0.9;
+  if (progress < 12) return 2.8;
+  if (progress < 65) return 1.75;
+  if (progress < 75) return 1.35;
+  if (progress < 85) return 1.05;
+  return 0.86;
 }
 
 export default function PlayControls() {
@@ -23,7 +22,7 @@ export default function PlayControls() {
       const state = useUniverseStore.getState();
       if (lastTime > 0 && state.isPlaying) {
         const dt = time - lastTime;
-        const step = (dt / 1000) * (100 / 58) * getPlaybackSpeed(state.progress);
+        const step = (dt / 1000) * (100 / 30) * getPlaybackSpeed(state.progress);
         const nextProgress = Math.min(100, state.progress + step);
         state.setProgress(nextProgress);
         if (nextProgress >= 100) state.setIsPlaying(false);
