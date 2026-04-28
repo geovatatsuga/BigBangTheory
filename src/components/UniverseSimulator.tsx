@@ -1101,7 +1101,7 @@ function MilkyWayDestination({ visible, progress }: { visible: number; progress:
   const groupRef = useRef<THREE.Group>(null);
   const beacon = smoothstep(86, 92, progress) * (1 - smoothstep(96, 98.5, progress));
   const solarCloseup = smoothstep(94, 97, progress);
-  const galaxyVisibility = visible * THREE.MathUtils.lerp(1, 0.22, solarCloseup);
+  const galaxyVisibility = visible * THREE.MathUtils.lerp(1, 0.08, solarCloseup);
 
   useFrame((state) => {
     if (!groupRef.current) return;
@@ -1170,7 +1170,7 @@ function SolarDustDisk({ visible, progress }: { visible: number; progress: numbe
   const pointsRef = useRef<THREE.Points>(null);
   const material = useMemo(() => makeGlowMaterial(), []);
   const field = useMemo(() => createSolarDustField(), []);
-  const birth = smoothstep(94, 97, progress);
+  const birth = smoothstep(92.5, 96, progress);
 
   useFrame((state) => {
     material.uniforms.uTime.value = state.clock.elapsedTime;
@@ -1195,40 +1195,91 @@ function SolarDustDisk({ visible, progress }: { visible: number; progress: numbe
   );
 }
 
-function LocalSolarReference({ visible, progress }: { visible: number; progress: number }) {
-  const birth = smoothstep(94, 97, progress);
-  const planets = smoothstep(96, 98.5, progress);
-  const closeup = smoothstep(94, 96.5, progress);
+function createLocalStarField(count = 120): ShowcaseField {
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const alphas = new Float32Array(count);
+  const sizes = new Float32Array(count);
+  const seeds = new Float32Array(count);
+  const color = new THREE.Color();
+
+  for (let i = 0; i < count; i++) {
+    const base = i * 3;
+    const seed = Math.random();
+    const radius = 120 + Math.random() * 260;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(Math.random() * 2 - 1);
+
+    positions[base] = Math.sin(phi) * Math.cos(theta) * radius;
+    positions[base + 1] = Math.cos(phi) * radius * 0.58;
+    positions[base + 2] = Math.sin(phi) * Math.sin(theta) * radius;
+
+    color.setHSL(seed > 0.72 ? 0.1 : 0.58, seed > 0.72 ? 0.8 : 0.42, 0.72 + seed * 0.18);
+    colors[base] = color.r;
+    colors[base + 1] = color.g;
+    colors[base + 2] = color.b;
+    alphas[i] = 0.16 + seed * 0.34;
+    sizes[i] = 2.6 + seed * 5.2;
+    seeds[i] = seed;
+  }
+
+  return { count, positions, colors, alphas, sizes, seeds };
+}
+
+function LocalSlowStars({ visible }: { visible: number }) {
+  const pointsRef = useRef<THREE.Points>(null);
+  const material = useMemo(() => makeGlowMaterial(), []);
+  const field = useMemo(() => createLocalStarField(), []);
+
+  useFrame((state) => {
+    material.uniforms.uTime.value = state.clock.elapsedTime;
+    if (!pointsRef.current) return;
+    pointsRef.current.rotation.y = state.clock.elapsedTime * 0.004;
+    pointsRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.05) * 0.02;
+  });
+
   if (visible <= 0.01) return null;
 
   return (
-    <group position={[152, -42, 170]} rotation={[0.95, 0, -0.08]} scale={visible * THREE.MathUtils.lerp(0.32, 0.72, closeup)}>
-      <mesh renderOrder={-1} position={[0, 0, -6]} scale={[1.35, 0.82, 1]}>
-        <circleGeometry args={[96, 96]} />
-        <meshBasicMaterial color="#01030a" transparent opacity={0.72 * closeup} depthWrite={false} />
-      </mesh>
-      <mesh renderOrder={0} position={[0, 0, -4]} scale={[1.05, 0.56, 1]}>
-        <ringGeometry args={[62, 96, 96]} />
-        <meshBasicMaterial color="#0f172a" transparent opacity={0.22 * closeup} depthWrite={false} />
-      </mesh>
+    <points ref={pointsRef} material={material}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" count={field.count} array={field.positions} itemSize={3} />
+        <bufferAttribute attach="attributes-color" count={field.count} array={field.colors} itemSize={3} />
+        <bufferAttribute attach="attributes-alpha" count={field.count} array={field.alphas} itemSize={1} />
+        <bufferAttribute attach="attributes-size" count={field.count} array={field.sizes} itemSize={1} />
+        <bufferAttribute attach="attributes-seed" count={field.count} array={field.seeds} itemSize={1} />
+      </bufferGeometry>
+    </points>
+  );
+}
+
+function LocalSolarReference({ visible, progress }: { visible: number; progress: number }) {
+  const birth = smoothstep(92.5, 96, progress);
+  const planets = smoothstep(94.8, 98, progress);
+  const closeup = smoothstep(92.5, 95.5, progress);
+  if (visible <= 0.01) return null;
+
+  return (
+    <group position={[152, -42, 170]} rotation={[0.95, 0, -0.08]} scale={visible * THREE.MathUtils.lerp(0.44, 0.92, closeup)}>
+      <LocalSlowStars visible={visible * closeup} />
       <SolarDustDisk visible={visible} progress={progress} />
       <mesh>
-        <sphereGeometry args={[THREE.MathUtils.lerp(8, 13, birth), 32, 32]} />
-        <meshBasicMaterial color="#fde047" transparent opacity={0.28 + birth * 0.52} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <sphereGeometry args={[THREE.MathUtils.lerp(10, 16, birth), 32, 32]} />
+        <meshBasicMaterial color="#fde047" transparent opacity={0.42 + birth * 0.48} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
       <mesh scale={1 + birth * 2.6}>
-        <sphereGeometry args={[16, 32, 32]} />
-        <meshBasicMaterial color="#facc15" transparent opacity={birth * 0.12} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <sphereGeometry args={[20, 32, 32]} />
+        <meshBasicMaterial color="#facc15" transparent opacity={birth * 0.16} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
-      {[26, 42, 62, 84].map((radius, index) => (
+      {[34, 56, 82, 112].map((radius, index) => (
         <group key={radius}>
           <mesh>
-            <torusGeometry args={[radius, 0.32, 8, 160]} />
-            <meshBasicMaterial color="#bae6fd" transparent opacity={0.08 + planets * 0.22} depthWrite={false} />
+            <torusGeometry args={[radius, 0.42, 8, 160]} />
+            <meshBasicMaterial color="#e0f2fe" transparent opacity={0.12 + planets * 0.28} depthWrite={false} />
           </mesh>
           <mesh position={[Math.cos(index * 1.7 + progress * 0.035) * radius, Math.sin(index * 1.7 + progress * 0.035) * radius, 0]}>
-            <sphereGeometry args={[index === 2 ? 4.4 : index === 3 ? 3.6 : 2.8, 20, 20]} />
-            <meshBasicMaterial color={index === 2 ? '#3b82f6' : index === 3 ? '#ef4444' : index === 1 ? '#e2e8f0' : '#a7f3d0'} transparent opacity={planets * 0.86} />
+            <sphereGeometry args={[index === 2 ? 6.4 : index === 3 ? 5.2 : 4.2, 20, 20]} />
+            <meshBasicMaterial color={index === 2 ? '#3b82f6' : index === 3 ? '#ef4444' : index === 1 ? '#e2e8f0' : '#a7f3d0'} transparent opacity={0.08 + planets * 0.9} />
           </mesh>
         </group>
       ))}
@@ -1412,7 +1463,7 @@ function ScaleJourney() {
         ))}
       </group>
       <MilkyWayDestination visible={visible * smoothstep(80, 86, progress)} progress={progress} />
-      <LocalSolarReference visible={visible * smoothstep(94, 97, progress)} progress={progress} />
+      <LocalSolarReference visible={visible * smoothstep(92.5, 95.5, progress)} progress={progress} />
     </>
   );
 }

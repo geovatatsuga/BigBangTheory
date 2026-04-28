@@ -29,7 +29,7 @@ export default function CameraDirector() {
     const lateOrbit = smoothstep(72, 90, progress);
     const solarDive = smoothstep(82, 88.5, progress);
     const galaxyArmDive = smoothstep(88.5, 94, progress);
-    const solarReveal = smoothstep(94, 97.5, progress);
+    const solarReveal = smoothstep(92.5, 96.5, progress);
     const solarExit = smoothstep(98, 100, progress);
     const cinematicSolar = progress >= 82 && progress < 99;
     const overviewPosition = new THREE.Vector3(
@@ -43,7 +43,7 @@ export default function CameraDirector() {
       THREE.MathUtils.lerp(overviewPosition.z, 330, solarDive)
     );
     const galacticArmPosition = new THREE.Vector3(132, -18, 246);
-    const solarPosition = new THREE.Vector3(152, -42, 118);
+    const solarPosition = new THREE.Vector3(150, -44, 58);
     const exitPosition = new THREE.Vector3(34, 18, profile.cameraDistance);
     const cinematicPosition = divePosition
       .lerp(galacticArmPosition, galaxyArmDive)
