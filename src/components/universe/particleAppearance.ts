@@ -16,19 +16,21 @@ export function getScale(progress: number) {
 }
 
 export function applyPhaseColor(color: THREE.Color, progress: number, seed: number, kind: number) {
-  const hot = smoothstep(0, 4, progress);
   const inflation = smoothstep(4, 12, progress);
   const plasma = smoothstep(12, 22, progress);
-  const clear = smoothstep(22, 48, progress);
-  const dawn = smoothstep(48, 64, progress);
-  const galaxies = smoothstep(60, 85, progress);
+  const recombination = smoothstep(22, 34, progress);
+  const cooling = smoothstep(34, 48, progress);
+  const dawn = smoothstep(52, 64, progress);
 
   const plasmaHot = new THREE.Color('#ffffff');
   const plasmaWarm = new THREE.Color('#fef9c3');
   const plasmaCool = new THREE.Color('#fbbf24');
-  const cosmicRed = new THREE.Color('#ef4444');
-  const dawnBlue = new THREE.Color('#60a5fa');
-  const starWhite = new THREE.Color('#ffffff');
+  const recombinationAmber = new THREE.Color('#f97316');
+  const neutralGas = new THREE.Color('#1f130b');
+  const darkGas = new THREE.Color('#06070a');
+  const popIIIBlueWhite = new THREE.Color('#dbeafe');
+  const warmStar = new THREE.Color('#ffd27a');
+  const coolStar = new THREE.Color('#ff9b54');
 
   if (progress < 4) {
     color.copy(plasmaHot);
@@ -42,25 +44,31 @@ export function applyPhaseColor(color: THREE.Color, progress: number, seed: numb
     color.lerpColors(plasmaWarm, plasmaCool, plasma);
     return;
   }
+  if (progress < 34) {
+    color.lerpColors(plasmaCool, recombinationAmber, recombination);
+    return;
+  }
   if (progress < 48) {
-    color.lerpColors(plasmaCool, cosmicRed, clear);
+    color.lerpColors(neutralGas, darkGas, cooling);
     return;
   }
 
-  const warm = seed > 0.45;
+  const warm = seed > 0.56;
   const isPopIII = kind < 0.18;
   
   if (progress < 64) {
-    const popIIIColor = isPopIII ? dawnBlue : cosmicRed;
-    color.lerpColors(cosmicRed, popIIIColor, dawn);
+    const preStar = kind < 0.72 ? darkGas : neutralGas;
+    const firstLight = isPopIII ? popIIIBlueWhite : warmStar;
+    color.lerpColors(preStar, firstLight, dawn * (isPopIII ? 1 : 0.28));
     return;
   }
 
   if (kind > 0.9) {
-    color.setHSL(0.6, 0.34, 0.2 + seed * 0.1);
+    color.setHSL(0.07, 0.28, 0.16 + seed * 0.08);
     return;
   }
-  color.setHSL(warm ? 0.09 : 0.6, warm ? 0.8 : 0.74, warm ? 0.58 : 0.76);
+  color.copy(warm ? warmStar : popIIIBlueWhite);
+  color.lerp(coolStar, warm ? seed * 0.22 : 0);
 }
 
 export function getParticleAlpha(progress: number, seed: number, kind: number) {
@@ -74,11 +82,11 @@ export function getParticleAlpha(progress: number, seed: number, kind: number) {
   
   if (progress < 38) {
     // Recombinação: Átomos começam a aparecer conforme o fog limpa
-    return THREE.MathUtils.lerp(0.0, 0.15, smoothstep(22, 38, progress)) * (0.8 + seed * 0.4);
+    return THREE.MathUtils.lerp(0.0, 0.045, smoothstep(22, 38, progress)) * (0.8 + seed * 0.4);
   }
 
-  const dawnBase = 0.05;
-  const earlyGlow = THREE.MathUtils.lerp(dawnBase, 0.42 + seed * 0.18, smoothstep(48, 64, progress) * (kind < 0.18 ? 1 : 0));
+  const dawnBase = 0.018;
+  const earlyGlow = THREE.MathUtils.lerp(dawnBase, 0.36 + seed * 0.16, smoothstep(52, 64, progress) * (kind < 0.18 ? 1 : 0));
 
   if (phase === 'atoms' || phase === 'dark-ages') return dawnBase;
 
@@ -88,7 +96,7 @@ export function getParticleAlpha(progress: number, seed: number, kind: number) {
     const galaxyStar = smoothstep(60, 78, progress);
     const starShare = earlyStar ? 1 : galaxyStar;
     const ignition = Math.max(
-      smoothstep(48, 64, progress) * (kind < 0.18 ? 1 : 0),
+      smoothstep(52, 64, progress) * (kind < 0.18 ? 1 : 0),
       smoothstep(54 + seed * 16, 80, progress) * starShare
     );
     const spiralT = smoothstep(70, 96, progress);
@@ -101,7 +109,7 @@ export function getParticleAlpha(progress: number, seed: number, kind: number) {
       : kind > 0.9 ? 0.06 + seed * 0.03
       : 0.16) + spiralBoost;
     const formedAlpha = THREE.MathUtils.lerp(darkAlpha, galaxyAlpha, kind < 0.72 ? ignition : formation * 0.72);
-    return THREE.MathUtils.lerp(earlyGlow, formedAlpha, smoothstep(50, 64, progress));
+    return THREE.MathUtils.lerp(earlyGlow, formedAlpha, smoothstep(54, 66, progress));
   }
 
   return kind < 0.72 ? 0.78 + seed * 0.12 : 0.22;
@@ -118,11 +126,11 @@ export function getParticleSize(progress: number, seed: number, kind: number) {
   
   if (progress < 38) {
     // Átomos surgindo (pequenos e difusos)
-    return THREE.MathUtils.lerp(0.1, 1.5, smoothstep(22, 38, progress)) + seed * 0.5;
+    return THREE.MathUtils.lerp(0.1, 0.8, smoothstep(22, 38, progress)) + seed * 0.25;
   }
 
-  const baseSize = 1.5;
-  const earlySize = THREE.MathUtils.lerp(baseSize, 7 + seed * 7, smoothstep(48, 64, progress) * (kind < 0.18 ? 1 : 0));
+  const baseSize = 0.85;
+  const earlySize = THREE.MathUtils.lerp(baseSize, 6 + seed * 6, smoothstep(52, 64, progress) * (kind < 0.18 ? 1 : 0));
 
   if (phase === 'atoms' || phase === 'dark-ages') return baseSize;
 
@@ -133,7 +141,7 @@ export function getParticleSize(progress: number, seed: number, kind: number) {
     const galaxyStar = smoothstep(60, 78, progress);
     const starShare = earlyStar ? 1 : galaxyStar;
     const ignition = Math.max(
-      smoothstep(48, 64, progress) * (massive ? 1 : 0),
+      smoothstep(52, 64, progress) * (massive ? 1 : 0),
       smoothstep(54 + seed * 12, 82, progress) * starShare
     );
     const spiralT = smoothstep(70, 96, progress);
@@ -142,7 +150,7 @@ export function getParticleSize(progress: number, seed: number, kind: number) {
     const baseGalaxy = spiralBoost * (kind < 0.72 ? 1.4 + seed * 2.8 : kind > 0.9 ? 1.2 + seed * 1.2 : 1.0 + seed * 1.4);
     const coreBoost = kind < 0.15 ? 1 + spiralT * 0.5 : 1;
     const formedSize = THREE.MathUtils.lerp(2 + seed * 1.5, baseGalaxy * coreBoost, kind < 0.72 ? ignition : formation * 0.8);
-    return THREE.MathUtils.lerp(earlySize, formedSize, smoothstep(50, 64, progress));
+    return THREE.MathUtils.lerp(earlySize, formedSize, smoothstep(54, 66, progress));
   }
 
   return kind < 0.72 ? 1.4 + seed * 2.8 : 1.0 + seed * 1.4;

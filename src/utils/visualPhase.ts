@@ -95,52 +95,52 @@ export function getVisualProfile(progress: number): VisualProfile {
   }
 
   if (phase === 'recombination') {
-    const clear = smoothstep(22, 42, progress);
+    const clear = smoothstep(22, 34, progress);
     return {
       title: 'Recombinacao',
       scaleLabel: '380.000 anos',
       caption: 'Eletrons se prendem aos nucleos e a luz passa a viajar livre.',
-      light: 0.84 - clear * 0.42,
-      gas: 1,
+      light: 0.78 - clear * 0.54,
+      gas: 0.9 - clear * 0.24,
       stars: 0,
       cameraDistance: getCameraDistance(progress)
     };
   }
 
   if (phase === 'atoms') {
-    const cooling = smoothstep(34, 48, progress);
+    const cooling = smoothstep(34, 40, progress);
     return {
-      title: 'Universo transparente',
+      title: 'Primeiros atomos',
       scaleLabel: 'Antes das estrelas',
-      caption: 'A luz ja atravessa o espaco, mas ainda nao ha estrelas acesas.',
-      light: 0.42 - cooling * 0.18,
-      gas: 0.96 - cooling * 0.1,
+      caption: 'Hidrogenio e helio neutros dominam um Universo ainda sem estrelas.',
+      light: 0.24 - cooling * 0.12,
+      gas: 0.68 - cooling * 0.12,
       stars: 0,
       cameraDistance: getCameraDistance(progress)
     };
   }
 
   if (phase === 'dark-ages') {
-    const darkness = smoothstep(42, 52, progress);
+    const darkness = smoothstep(40, 48, progress);
     return {
       title: 'Idade das Trevas',
       scaleLabel: 'Rumo ao alvorecer',
       caption: 'Nuvens de gas escuro se preparam para formar as primeiras estrelas.',
-      light: 0.24 - darkness * 0.16,
-      gas: 0.82,
+      light: 0.12 - darkness * 0.08,
+      gas: 0.56,
       stars: 0,
       cameraDistance: getCameraDistance(progress)
     };
   }
 
   if (phase === 'first-stars') {
-    const born = smoothstep(52, 70, progress);
+    const born = smoothstep(52, 62, progress);
     return {
       title: 'Alvorecer cosmico',
-      scaleLabel: '100-200 milhoes de anos',
-      caption: 'Surgem as primeiras estrelas, chamadas Populacao III.',
-      light: 0.08 + born * 0.72,
-      gas: 0.82 - born * 0.3,
+      scaleLabel: '100-300 milhoes de anos',
+      caption: 'Surgem estrelas Populacao III: massivas, quentes e azul-brancas.',
+      light: 0.04 + born * 0.7,
+      gas: 0.56 - born * 0.24,
       stars: born,
       cameraDistance: getCameraDistance(progress)
     };

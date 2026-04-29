@@ -345,8 +345,8 @@ function createParticleField(): ParticleField {
   ];
 
   const rng = lcg(42); // deterministic layout
-  const hues = [220, 45, 280, 170, 340, 30, 200, 260, 90, 320, 15, 180, 120, 350, 240, 55, 205, 12, 300, 155,
-                305, 175, 48, 265, 10, 190, 315, 160, 330, 70, 285, 52, 308, 168, 5, 215, 275, 145, 325, 65];
+  const hues = [215, 48, 35, 18, 8, 55, 205, 42, 28, 12, 220, 50, 32, 16, 5, 58, 210, 45, 24, 10,
+                218, 52, 38, 20, 6, 56, 208, 46, 30, 14, 222, 54, 36, 22, 4, 49, 212, 44, 26, 9];
 
   for (let a = 0; a < NUM_ANCHORS; a++) {
     // Fibonacci sphere mapping for even distribution
@@ -666,7 +666,7 @@ function CosmicParticles({ field }: { field: ParticleField }) {
           : isArm  ? 0.55 + seed * 0.28
           : kind < 0.72 ? 0.42 + seed * 0.32
           : 0.16 + seed * 0.10;
-        const anchorSat = isCore ? 0.75 : kind < 0.72 ? 0.92 : 0.42;
+        const anchorSat = isCore ? 0.62 : kind < 0.72 ? 0.72 : 0.28;
         // Regiões HII: pontos brilhantes azul/rosa nos braços espirais
         const hiiChance = seed > 0.86 && kind < 0.55;
         const finalHue = hiiChance ? (seed > 0.93 ? 0.60 : 0.95) : hue;
@@ -999,8 +999,9 @@ const bgStarData = (() => {
     positions[i * 3]     = Math.sin(phi) * Math.cos(theta) * r;
     positions[i * 3 + 1] = Math.cos(phi) * r;
     positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * r;
-    const warm = seed > 0.74;
-    color.setHSL(warm ? 0.08 : 0.6 + seed * 0.06, warm ? 0.5 : 0.38, 0.82 + seed * 0.18);
+    const hotBlue = seed < 0.28;
+    const warm = seed > 0.72;
+    color.setHSL(hotBlue ? 0.58 : warm ? 0.09 : 0.0, hotBlue ? 0.24 : warm ? 0.42 : 0.02, 0.82 + seed * 0.18);
     colors[i * 3]     = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
@@ -1392,8 +1393,8 @@ function createShowcaseGalaxy(config: ShowcaseGalaxyConfig): ShowcaseField {
       alphas[i] = 0.55 + core * 0.38;
       sizes[i] = 5 + core * 12 + seed * 3;
     } else {
-      const blueStar = seed > 0.62;
-      color.setHSL(blueStar ? 0.58 + config.hueShift * 0.035 : 0.08 + config.hueShift * 0.04, blueStar ? 0.82 : 0.88, blueStar ? 0.74 : 0.62);
+      const blueStar = seed > 0.72;
+      color.setHSL(blueStar ? 0.58 : 0.08, blueStar ? 0.36 : 0.72, blueStar ? 0.78 : 0.62);
       alphas[i] = 0.28 + seed * 0.52;
       sizes[i] = 2.4 + seed * 6.5;
     }
