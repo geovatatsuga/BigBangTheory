@@ -27,16 +27,19 @@ export default function CameraDirector() {
     const profile = getVisualProfile(progress);
     const orbit = state.clock.elapsedTime * 0.12;
     const lateOrbit = smoothstep(72, 90, progress);
-    const x = Math.sin(orbit) * THREE.MathUtils.lerp(18, 42, lateOrbit);
-    const y = 16 + Math.sin(orbit * 0.7) * 10;
-    const z = profile.cameraDistance;
+    
+    // Na fase do plasma (0-22), a câmera deve estar no centro (x=0, y=0)
+    const outPhase = smoothstep(12, 34, progress);
+    const targetX = Math.sin(orbit) * THREE.MathUtils.lerp(18, 42, lateOrbit) * outPhase;
+    const targetY = (16 + Math.sin(orbit * 0.7) * 10) * outPhase;
+    const targetZ = profile.cameraDistance;
 
     controls.enabled = progress > 62;
     controls.enablePan = false;
     controls.enableZoom = true;
     controls.autoRotate = progress > 72;
     controls.autoRotateSpeed = 0.06;
-    camera.position.lerp(new THREE.Vector3(x, y, z), 0.032);
+    camera.position.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.032);
     controls.target.lerp(new THREE.Vector3(0, 0, 0), 0.05);
     controls.update();
   });

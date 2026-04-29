@@ -6,6 +6,7 @@ import { getVisualPhase, getVisualProfile, smoothstep } from '../utils/visualPha
 import CameraDirector from './universe/CameraDirector';
 import { CenterlessMarker, CinematicHud } from './universe/SceneHud';
 import { applyPhaseColor, getParticleAlpha, getParticleSize, getScale } from './universe/particleAppearance';
+import { BloomPostProcessing, CosmicVolumetricNebulae, CosmicWebFilaments, StromgrenBubbles } from './universe/CosmicEffects';
 
 const NUM_PARTICLES = 18000;
 const BOUNDS = 820;
@@ -49,6 +50,7 @@ type GlowShaderMaterial = THREE.ShaderMaterial & {
   uniforms: {
     uTime: { value: number };
     uPixelRatio: { value: number };
+    uRedshift: { value: number };
   };
 };
 
@@ -73,7 +75,10 @@ function makeGlowMaterial() {
   return new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
-      uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) }
+      uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
+      uRedshift: { value: 0 },
+      uProgress: { value: 0 },
+      uIsNebula: { value: 0 }
     },
     vertexShader: `
       attribute float alpha;
@@ -81,6 +86,8 @@ function makeGlowMaterial() {
       attribute float seed;
       varying vec3 vColor;
       varying float vAlpha;
+      varying float vDist;
+      varying float vSeed;
 
       uniform float uTime;
       uniform float uPixelRatio;
@@ -88,7 +95,9 @@ function makeGlowMaterial() {
       void main() {
         vColor = color;
         vAlpha = alpha;
+        vSeed = seed;
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vDist = -mvPosition.z;
         float twinkle = 0.88 + 0.12 * sin(uTime * 2.0 + seed * 23.0);
         gl_PointSize = size * twinkle * uPixelRatio * (230.0 / max(36.0, -mvPosition.z));
         gl_Position = projectionMatrix * mvPosition;
@@ -97,16 +106,61 @@ function makeGlowMaterial() {
     fragmentShader: `
       varying vec3 vColor;
       varying float vAlpha;
+      varying float vDist;
+      varying float vSeed;
+
+      uniform float uRedshift;
+      uniform float uProgress;
+      uniform float uTime;
+      uniform float uIsNebula;
+
+      vec3 applyRedshift(vec3 col, float z) {
+        float stretch = 1.0 + z;
+        vec3 shifted;
+        shifted.r = col.r + col.g * z * 0.4 + col.b * z * 0.6;
+        shifted.g = col.g * (1.0 - z * 0.3) + col.b * z * 0.15;
+        shifted.b = col.b * (1.0 - z * 0.7);
+        float dimming = 1.0 / (1.0 + z * z * 0.15);
+        return max(shifted * dimming, vec3(0.0));
+      }
 
       void main() {
         vec2 uv = gl_PointCoord - vec2(0.5);
         float dist = length(uv);
-        if (dist > 0.5) discard;
+        
+        // Morfologia das Partículas
+        float shape = 0.0;
+        
+        // Forma difusa (gás / plasma inicial)
+        float gasShape = smoothstep(0.5, 0.0, dist);
+        
+        // Forma estelar (pontos com raios)
+        float core = smoothstep(0.15, 0.0, dist);
+        float spikes = max(0.0, 1.0 - abs(uv.x) * 15.0) * max(0.0, 1.0 - abs(uv.y) * 2.0)
+                     + max(0.0, 1.0 - abs(uv.y) * 15.0) * max(0.0, 1.0 - abs(uv.x) * 2.0);
+        float starShape = core + spikes * 0.2 * smoothstep(0.5, 0.2, dist);
 
-        float core = smoothstep(0.42, 0.0, dist);
-        float halo = smoothstep(0.5, 0.08, dist) * 0.42;
-        float alpha = vAlpha * (core + halo);
-        gl_FragColor = vec4(vColor * (1.0 + core * 0.9), alpha);
+        if (uIsNebula > 0.5) {
+          // Nebulosas são sempre nuvens difusas de gás
+          shape = gasShape;
+        } else {
+          // Partículas regulares (átomos que viram estrelas)
+          if (uProgress < 22.0) {
+            shape = gasShape * 0.8; // Energia fluida
+          } else {
+            // Transição suave de Gás difuso para Estrelas afiadas durante o Alvorecer Cósmico (48-65%)
+            float starMix = smoothstep(48.0, 65.0, uProgress);
+            shape = mix(gasShape, starShape, starMix);
+          }
+        }
+
+        if (dist > 0.5) discard;
+        float alpha = vAlpha * shape;
+        vec3 col = vColor * (1.0 + (uProgress < 22.0 ? 0.8 : 0.2));
+
+        float z = clamp(vDist / 900.0, 0.0, 1.8) * uRedshift;
+        col = applyRedshift(col, z);
+        gl_FragColor = vec4(col, alpha);
       }
     `,
     vertexColors: true,
@@ -392,6 +446,9 @@ function CosmicParticles({ field }: { field: ParticleField }) {
     if (!pointsRef.current || !shouldRenderParticles) return;
 
     material.uniforms.uTime.value = state.clock.elapsedTime;
+    material.uniforms.uProgress.value = progress;
+    // Cosmological redshift: ativa mais cedo e mais forte
+    material.uniforms.uRedshift.value = smoothstep(60, 82, progress) * 1.4;
 
     const positions = pointsRef.current.geometry.attributes.position.array as Float32Array;
     const colors = pointsRef.current.geometry.attributes.color.array as Float32Array;
@@ -428,32 +485,31 @@ function CosmicParticles({ field }: { field: ParticleField }) {
       const clumpY = (Math.sin(theta * 1.7 + wobble * 0.48) * knot * 0.72 + Math.cos(seed * 90 + time * 16) * (3 + pressure * 7)) * collapsePulse;
       const clumpZ = (Math.sin(theta + seed * 20 + shear * 0.45) * knot + Math.sin(seed * 70 + time * 19) * (3 + pressure * 8)) * collapsePulse;
 
-      if (phase === 'big-bang') {
-        bx = clumpX;
-        by = clumpY;
-        bz = clumpZ;
+      if (phase === 'big-bang' || phase === 'plasma') {
+        // Movimento fluido e viscoso de redemoinho (Sopa de Quarks)
+        const flowStrength = 1.0 - smoothstep(18, 24, progress);
+        const flowTime = time * 0.8;
+        const swirlX = Math.sin(flowTime + seed * 10.0 + bz * 0.05) * 8.0 * flowStrength;
+        const swirlY = Math.cos(flowTime + seed * 12.0 + bx * 0.05) * 8.0 * flowStrength;
+        const swirlZ = Math.sin(flowTime + seed * 14.0 + by * 0.05) * 8.0 * flowStrength;
+        
+        bx += swirlX;
+        by += swirlY;
+        bz += swirlZ;
+        
+        if (phase === 'big-bang') {
+          bx += Math.sin(theta + wobble * 0.62) * knot;
+          by += Math.sin(theta * 1.7 + wobble * 0.48) * knot;
+          bz += Math.sin(theta + seed * 20) * knot;
+        }
       }
 
       if (progress >= 4 && progress < 68) {
-        const blast = smoothstep(4, 8, progress);
-        const expansionTail = smoothstep(8, 22, progress);
-        const cooling = smoothstep(22, 66, progress);
-        // settle vai a 0 suavemente em 66 — radialStretch retorna a 1 juntos, sem salto
-        const settle = 1 - smoothstep(48, 66, progress);
-        const wave = Math.sin(seed * 24 + time * 7) * (10 * (1 - blast) + 2.5) * settle;
-        const ignitionShock = Math.sin(seed * 40 + blast * Math.PI * 5) * (1 - blast) * 0.18 * settle;
-        // radialStretch decai para 1 junto com settle — zero corte ao sair do bloco
-        const radialStretch = 1 + (blast * 0.2 + expansionTail * 0.28 - cooling * 0.08 + ignitionShock) * settle;
-        bx = THREE.MathUtils.lerp(clumpX, bx, blast) * radialStretch + bx * 0.018 * wave;
-        by = THREE.MathUtils.lerp(clumpY, by, blast) * radialStretch + by * 0.012 * wave;
-        bz = THREE.MathUtils.lerp(clumpZ, bz, blast) * radialStretch + bz * 0.018 * wave;
-
-        const turbulence = smoothstep(5, 13, progress) * (1 - smoothstep(24, 66, progress) * 0.92);
-        const jitter = THREE.MathUtils.lerp(0, 22, turbulence);
-        const outward = 1 + expansionTail * 0.14 * (1 - cooling * 0.75) + Math.sin(seed * 18 + time * 1.4) * 0.025 * turbulence;
-        bx = bx * outward + Math.sin(time * 2.1 + seed * 80) * jitter;
-        by = by * outward + Math.cos(time * 1.9 + seed * 90) * jitter * 0.7;
-        bz = bz * outward + Math.sin(time * 2.3 + seed * 70) * jitter;
+        const turbulence = smoothstep(5, 22, progress) * (1 - smoothstep(24, 66, progress) * 0.92);
+        const jitter = THREE.MathUtils.lerp(0, 42, turbulence); // Aumentado o jitter
+        bx += Math.sin(time * 2.1 + seed * 80) * jitter;
+        by += Math.cos(time * 1.9 + seed * 90) * jitter * 0.7;
+        bz += Math.sin(time * 2.3 + seed * 70) * jitter;
       }
 
       if (progress >= 42 && progress < 70) {
@@ -497,59 +553,70 @@ function CosmicParticles({ field }: { field: ParticleField }) {
           const tiltZ       = aIdx >= 0 ? field.anchorTiltZ[aIdx] : 0;
           const gScale      = aIdx >= 0 ? field.anchorScale[aIdx] : 1.0;
 
-          const spiralBoost = THREE.MathUtils.lerp(1, 1.55, spiralT) * gScale;
+          const spiralBoost  = THREE.MathUtils.lerp(1, 1.72, spiralT) * gScale;
           const sourceRadius = Math.sqrt(rawDx * rawDx + rawDz * rawDz);
-          const radius = THREE.MathUtils.clamp(sourceRadius * THREE.MathUtils.lerp(0.72, 0.98, mature), 6, 130) * spiralBoost;
+          const radius = THREE.MathUtils.clamp(sourceRadius * THREE.MathUtils.lerp(0.72, 0.98, mature), 4, 150) * spiralBoost;
+          const bulgeRadius = 14 * gScale;
+          const inBulge = radius < bulgeRadius;
 
           let gx = 0, gy = 0, gz = 0;
 
           if (gType === 4) {
-            // Elliptical — no arms, just a triaxial blob
-            const squash = 0.52 + seed * 0.36;
+            // Elliptical
+            const squash = 0.48 + seed * 0.32;
             const theta3  = seed * Math.PI * 2 * 17;
-            const phi3    = Math.acos(Math.max(-1, Math.min(1, (seed * 2 - 1))));
-            const er = Math.pow(seed, 0.55) * radius * 0.88;
+            const phi3    = Math.acos(Math.max(-1, Math.min(1, seed * 2 - 1)));
+            const er = Math.pow(seed, 0.62) * radius * 0.92;
             gx = er * Math.sin(phi3) * Math.cos(theta3);
-            gy = er * Math.cos(phi3) * squash * 0.52;
-            gz = er * Math.sin(phi3) * Math.sin(theta3) * 0.78;
+            gy = er * Math.cos(phi3) * squash * 0.45;
+            gz = er * Math.sin(phi3) * Math.sin(theta3) * 0.74;
           } else if (gType === 6) {
-            // Lenticular/ring galaxy: compact core plus a broad stellar ring.
+            // Lenticular/ring
             const theta4 = seed * Math.PI * 2 * 23;
-            const twistFactor = THREE.MathUtils.lerp(twist, twist * 1.25, spiralT);
-            const ring = radius * THREE.MathUtils.lerp(0.42, 0.98, smoothstep(0.16, 0.92, seed));
-            const ringNoise = Math.sin(seed * 140 + progress * 0.05) * THREE.MathUtils.lerp(6, 1.8, spiralT);
-            gx = Math.cos(theta4 + radius * twistFactor) * ring + ringNoise;
-            gy = rawDy * THREE.MathUtils.lerp(0.2, 0.035, spiralT);
-            gz = Math.sin(theta4 + radius * twistFactor) * ring * THREE.MathUtils.lerp(0.5, 0.28, spiralT);
+            const twistFactor = THREE.MathUtils.lerp(twist, twist * 1.3, spiralT);
+            const ring = radius * THREE.MathUtils.lerp(0.38, 1.02, smoothstep(0.2, 0.95, seed));
+            const ringWidth = Math.sin(seed * 140 + progress * 0.05) * THREE.MathUtils.lerp(5, 1.4, spiralT);
+            gx = Math.cos(theta4 + radius * twistFactor) * ring + ringWidth;
+            gy = inBulge ? rawDy * 0.28 : rawDy * THREE.MathUtils.lerp(0.18, 0.022, spiralT);
+            gz = Math.sin(theta4 + radius * twistFactor) * ring * THREE.MathUtils.lerp(0.48, 0.22, spiralT) + ringWidth * 0.3;
+          } else if (inBulge) {
+            // Bulge central esférico — núcleo brilhante para todos os espirais
+            const theta5 = seed * Math.PI * 2 * 13;
+            const phi5   = Math.acos(Math.max(-1, Math.min(1, seed * 2 - 1)));
+            const br = Math.pow(seed, 0.45) * radius;
+            gx = br * Math.sin(phi5) * Math.cos(theta5);
+            gy = br * Math.cos(phi5) * 0.68;
+            gz = br * Math.sin(phi5) * Math.sin(theta5) * 0.72;
           } else {
-            // Spiral family (grand, 3-arm, 4-arm, barred, 5-arm)
+            // Spirais — braços mais compactos e definidos
             const arm       = Math.floor(seed * numArms);
             const armOffset = arm * ((Math.PI * 2) / numArms);
-            const twistFactor = THREE.MathUtils.lerp(twist, twist * 1.55, spiralT);
-            const armNoise  = Math.sin(seed * 80 + progress * 0.08) * (1 - mature) * THREE.MathUtils.lerp(11, 2, spiralT);
+            const twistFactor = THREE.MathUtils.lerp(twist, twist * 1.68, spiralT);
+            const looseness = Math.pow(Math.min(1, radius / (80 * gScale)), 1.2);
+            const feather   = (seed - 0.5) * THREE.MathUtils.lerp(0.28, 0.07, spiralT) * looseness * radius;
+            const armNoise  = Math.sin(seed * 80 + progress * 0.08) * (1 - mature) * THREE.MathUtils.lerp(9, 1.2, spiralT);
 
             if (gType === 3) {
-              // Barred spiral — inner core forms a elongated bar, outer arms spiral
-              const barFraction = 0.38; // fraction of radius that is bar
+              // Barred spiral
+              const barFraction = 0.36;
               if (radius < sourceRadius * gScale * barFraction) {
-                // Bar: elongate along one axis
-                gx = radius * 1.6 * (seed - 0.5) * 2;
-                gy = rawDy * THREE.MathUtils.lerp(0.22, 0.04, spiralT);
-                gz = radius * 0.18 * (seed - 0.5) * 2;
+                gx = radius * 1.7 * (seed - 0.5) * 2;
+                gy = rawDy * THREE.MathUtils.lerp(0.2, 0.032, spiralT);
+                gz = radius * 0.16 * (seed - 0.5) * 2;
               } else {
                 const spin = armOffset + radius * twistFactor + formation * (0.42 + seed * 0.55);
-                const diskR = radius * THREE.MathUtils.lerp(0.74, 1.02, mature);
-                gx = Math.cos(spin) * diskR + armNoise;
-                gy = rawDy * THREE.MathUtils.lerp(0.26, 0.05, spiralT);
-                gz = Math.sin(spin) * diskR * THREE.MathUtils.lerp(0.55, 0.35, spiralT);
+                const diskR = radius * THREE.MathUtils.lerp(0.74, 1.04, mature);
+                gx = Math.cos(spin) * diskR + feather + armNoise;
+                gy = rawDy * THREE.MathUtils.lerp(0.24, 0.032, spiralT);
+                gz = Math.sin(spin) * diskR * THREE.MathUtils.lerp(0.52, 0.28, spiralT) + feather * 0.4;
               }
             } else {
               // Standard spiral
               const spin  = armOffset + radius * twistFactor + formation * (0.48 + seed * 0.6);
-              const diskR = radius * THREE.MathUtils.lerp(0.76, 1.04, mature);
-              gx = Math.cos(spin) * diskR + armNoise;
-              gy = rawDy * THREE.MathUtils.lerp(0.28, 0.045, spiralT);
-              gz = Math.sin(spin) * diskR * THREE.MathUtils.lerp(0.56, 0.34, spiralT);
+              const diskR = radius * THREE.MathUtils.lerp(0.76, 1.06, mature);
+              gx = Math.cos(spin) * diskR + feather + armNoise;
+              gy = rawDy * THREE.MathUtils.lerp(0.26, 0.026, spiralT);
+              gz = Math.sin(spin) * diskR * THREE.MathUtils.lerp(0.54, 0.24, spiralT) + feather * 0.45;
             }
           }
 
@@ -590,12 +657,20 @@ function CosmicParticles({ field }: { field: ParticleField }) {
       if (colorAnchor >= 0 && progress >= 58) {
         const hue = field.anchorHue[colorAnchor] / 360;
         const baseWarmth = smoothstep(58, 92, progress);
-        // na cosmic-web as cores das galáxias ficam muito mais vivas e distintas
-        const cosmicBoost = smoothstep(85, 100, progress) * 0.5;
-        const anchorWarmth = Math.min(0.88, baseWarmth + cosmicBoost) * (kind < 0.72 ? 0.58 : 0.18);
-        const anchorLight = kind < 0.16 ? 0.78 : kind < 0.72 ? 0.58 + seed * 0.22 : 0.18 + seed * 0.12;
-        const anchorSat = kind < 0.72 ? 0.82 : 0.38;
-        color.lerp(anchorColor.setHSL(hue, anchorSat, anchorLight), anchorWarmth);
+        const cosmicBoost = smoothstep(82, 100, progress) * 0.65;
+        const anchorWarmth = Math.min(0.95, baseWarmth + cosmicBoost) * (kind < 0.72 ? 0.78 : 0.22);
+        // Core quente/amarelo, braços com cor do anchor, HII em azul/rosa
+        const isCore = kind < 0.12;
+        const isArm  = kind < 0.48;
+        const anchorLight = isCore ? 0.82 + seed * 0.14
+          : isArm  ? 0.55 + seed * 0.28
+          : kind < 0.72 ? 0.42 + seed * 0.32
+          : 0.16 + seed * 0.10;
+        const anchorSat = isCore ? 0.75 : kind < 0.72 ? 0.92 : 0.42;
+        // Regiões HII: pontos brilhantes azul/rosa nos braços espirais
+        const hiiChance = seed > 0.86 && kind < 0.55;
+        const finalHue = hiiChance ? (seed > 0.93 ? 0.60 : 0.95) : hue;
+        color.lerp(anchorColor.setHSL(finalHue, hiiChance ? 0.98 : anchorSat, hiiChance ? 0.70 + seed * 0.18 : anchorLight), anchorWarmth);
       }
 
       if (activeMode === 'centerless' && i === selected) {
@@ -645,32 +720,219 @@ function CosmicParticles({ field }: { field: ParticleField }) {
   );
 }
 
-function SceneBackground() {
+// ═══════════════════════════════════════════════════════════════════
+//    CMB (Radiação Cósmica de Fundo)
+//    O "eco" do Big Bang visível no momento da transparência.
+// ═══════════════════════════════════════════════════════════════════
+
+function CosmicBackgroundRadiation() {
   const { progress } = useUniverseStore();
+  const material = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uOpacity: { value: 0 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform float uOpacity;
+        varying vec2 vUv;
+
+        // Procedural CMB-like noise
+        float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+        float noise(vec2 p) {
+          vec2 i = floor(p); vec2 f = fract(p);
+          vec2 u = f*f*(3.0-2.0*f);
+          return mix(mix(hash(i + vec2(0,0)), hash(i + vec2(1,0)), u.x),
+                     mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x), u.y);
+        }
+        float fbm(vec2 p) {
+          float v = 0.0; float a = 0.5;
+          for (int i = 0; i < 5; i++) {
+            v += a * noise(p); p *= 2.0; a *= 0.5;
+          }
+          return v;
+        }
+
+        void main() {
+          if (uOpacity <= 0.01) discard;
+          
+          vec2 uv = vUv * 4.0;
+          float n = fbm(uv + uTime * 0.01);
+          
+          // Cores clássicas do mapa Planck (Azul, Amarelo, Vermelho sutil)
+          vec3 blue = vec3(0.05, 0.15, 0.4);
+          vec3 yellow = vec3(0.6, 0.45, 0.1);
+          vec3 red = vec3(0.4, 0.1, 0.05);
+          
+          vec3 color = mix(blue, yellow, n);
+          color = mix(color, red, smoothstep(0.7, 1.0, n));
+          
+          gl_FragColor = vec4(color * 0.6, uOpacity);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+    });
+  }, []);
+
+  useFrame((state) => {
+    // Aparece entre 22% e 32%, com pico na transparência em 38%
+    // Sofre redshift e desaparece na Idade das Trevas (38% - 48%)
+    const fadeIn = smoothstep(22, 32, progress);
+    const fadeOut = 1.0 - smoothstep(38, 48, progress);
+    material.uniforms.uOpacity.value = fadeIn * fadeOut * 0.75; // Aumentado para o CMB dominar a transparência
+    material.uniforms.uTime.value = state.clock.elapsedTime;
+  });
+
+  return (
+    <mesh material={material}>
+      <planeGeometry args={[2, 2]} />
+    </mesh>
+  );
+}
+
+function SceneBackground() {
+  const { progress, activeMode } = useUniverseStore();
   const { scene } = useThree();
-  const color = useMemo(() => new THREE.Color(), []);
-  const coolingStart = useMemo(() => new THREE.Color('#120805'), []);
-  const coolingEnd = useMemo(() => new THREE.Color('#01030a'), []);
-  const dawnEnd = useMemo(() => new THREE.Color('#030713'), []);
+  
+  // Cores baseadas na temperatura do universo (Planck/Wien)
+  const plasmaHot = useMemo(() => new THREE.Color('#ffffff'), []); // 10^32 K
+  const plasmaWarm = useMemo(() => new THREE.Color('#ffcc66'), []); // ~10^6 K
+  const plasmaCool = useMemo(() => new THREE.Color('#cc3300'), []); // ~3000 K (antes da recombinação)
+  const darkAges = useMemo(() => new THREE.Color('#010102'), []); // CMB cooling to IR
+  const voidBlack = useMemo(() => new THREE.Color('#000000'), []); // Universo atual
+  
+  const bgColor = useMemo(() => new THREE.Color(), []);
+
+  // Setup fog
+  if (!scene.fog) {
+    scene.fog = new THREE.FogExp2('#ffffff', 0);
+  }
 
   useFrame(() => {
-    const profile = getVisualProfile(progress);
-    if (progress >= 22 && progress < 52) {
-      color.lerpColors(coolingStart, coolingEnd, smoothstep(22, 52, progress));
-    } else if (progress >= 52 && progress < 70) {
-      color.lerpColors(coolingEnd, dawnEnd, smoothstep(52, 70, progress));
+    // Calcular a cor de fundo (temperatura do universo)
+    if (progress < 4) {
+      bgColor.copy(plasmaHot);
+    } else if (progress < 12) {
+      bgColor.lerpColors(plasmaHot, plasmaWarm, smoothstep(4, 12, progress));
+    } else if (progress < 22) {
+      bgColor.lerpColors(plasmaWarm, plasmaCool, smoothstep(12, 22, progress));
+    } else if (progress < 42) {
+      bgColor.lerpColors(plasmaCool, darkAges, smoothstep(22, 42, progress));
+    } else if (progress < 70) {
+      bgColor.lerpColors(darkAges, voidBlack, smoothstep(42, 70, progress));
     } else {
-      const target =
-        profile.light > 0.85 ? '#070712' :
-        profile.gas > 0.85 ? '#120805' :
-        getVisualPhase(progress) === 'dark-ages' ? '#01030a' :
-        '#030713';
-      color.set(target);
+      bgColor.copy(voidBlack); // Fundo sempre preto no final (gostei do preto)
     }
-    scene.background = color.clone();
+    
+    scene.background = bgColor.clone();
+
+    // Calcular a densidade do fog (opacidade do universo)
+    if (scene.fog instanceof THREE.FogExp2) {
+      scene.fog.color.copy(bgColor);
+      if (activeMode !== 'timeline') {
+         scene.fog.density = 0;
+      } else {
+         if (progress < 22) {
+           scene.fog.density = 0.04; // Levemente reduzido para ver a "sopa"
+         } else if (progress < 38) {
+           // Fog dissipa muito mais rápido (Fiat Lux completo em 38%)
+           // Reduzimos a densidade para o CMB brilhar atrás
+           const dissipate = 1.0 - smoothstep(22, 38, progress);
+           scene.fog.density = 0.025 * dissipate; 
+         } else {
+           scene.fog.density = 0.0; // Transparente
+         }
+      }
+    }
   });
 
   return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//    Sopa de Quarks (Distorção Fluida)
+//    Simula a viscosidade do plasma primordial.
+// ═══════════════════════════════════════════════════════════════════
+
+// PlasmaFluidDistortion removido pois prejudicava a estética volumétrica.
+
+// ═══════════════════════════════════════════════════════════════════
+//    Lentes Gravitacionais Primordiais
+//    Distorção do espaço em torno de halos de matéria escura.
+// ═══════════════════════════════════════════════════════════════════
+
+function PrimordialLensing({ anchors }: { anchors: THREE.Vector3[] }) {
+  const { progress } = useUniverseStore();
+  const material = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uProgress: { value: 0 },
+        uAnchors: { value: anchors.slice(0, 8).map(a => new THREE.Vector3().copy(a)) },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform float uProgress;
+        uniform vec3 uAnchors[8];
+        varying vec2 vUv;
+
+        void main() {
+          // Aparece apenas durante as eras escuras e formação de galáxias
+          float intensity = smoothstep(42, 55, uProgress) * (1.0 - smoothstep(75, 95, uProgress));
+          if (intensity <= 0.01) discard;
+
+          vec2 uv = vUv;
+          vec2 distortion = vec2(0.0);
+          
+          for (int i = 0; i < 8; i++) {
+            // Projetar posição do anchor (simplificado para distorção em tela)
+            vec2 anchorPos = (uAnchors[i].xy * 0.002) + 0.5;
+            vec2 dir = uv - anchorPos;
+            float dist = length(dir);
+            
+            // Perfil de lente gravitacional (distorção Einstein)
+            float force = intensity * 0.015 / (dist + 0.05);
+            distortion += normalize(dir) * force * smoothstep(0.4, 0.0, dist);
+          }
+
+          // Visualizamos a distorção como um "shimmer" no vácuo
+          float shimmer = sin(uTime * 2.0 + (uv.x + uv.y) * 20.0) * 0.05 * intensity;
+          gl_FragColor = vec4(vec3(0.1, 0.2, 0.5) * intensity, length(distortion) * 0.8 + shimmer);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+  }, [anchors]);
+
+  useFrame((state) => {
+    material.uniforms.uTime.value = state.clock.elapsedTime;
+    material.uniforms.uProgress.value = progress;
+  });
+
+  return (
+    <mesh material={material}>
+      <planeGeometry args={[2, 2]} />
+    </mesh>
+  );
 }
 
 function PlasmaFog() {
@@ -683,16 +945,18 @@ function PlasmaFog() {
     material.uniforms.uTime.value = state.clock.elapsedTime * 0.35;
 
     if (!pointsRef.current) return;
-    const ignition = smoothstep(4, 9, progress);
-    const dense = smoothstep(7, 18, progress);
-    const cooling = smoothstep(22, 58, progress);
-    const fadeOut = 1 - smoothstep(44, 60, progress);
-    const density = activeMode === 'timeline' ? Math.max(ignition * 0.78, dense) * fadeOut : 0;
+    const ignition = smoothstep(2, 6, progress);
+    const dense = smoothstep(4, 12, progress);
+    const cooling = smoothstep(22, 32, progress);
+    const fadeOut = 1 - smoothstep(28, 38, progress); // Some COMPLETAMENTE aos 38% (Transparência total)
+    const density = activeMode === 'timeline' ? Math.max(ignition * 0.95, dense) * fadeOut : 0;
     const alphas = pointsRef.current.geometry.attributes.alpha.array as Float32Array;
 
     for (let i = 0; i < field.count; i++) {
       const seed = field.seeds[i];
-      const pulse = 0.78 + Math.sin(state.clock.elapsedTime * (0.08 + seed * 0.08) + seed * 20) * 0.22;
+      // Movimento mais fluido e "viscoso"
+      const flow = Math.sin(state.clock.elapsedTime * 0.2 + seed * 10.0) * 0.5 + 0.5;
+      const pulse = 0.78 + Math.sin(state.clock.elapsedTime * (0.08 + seed * 0.08) + seed * 20.0 + flow * 2.0) * 0.22;
       alphas[i] = density * pulse * (0.085 + seed * 0.11) * (1 - cooling * 0.42);
     }
 
@@ -815,22 +1079,37 @@ const nebulaData = (() => {
 function CosmicNebulaField() {
   const { progress } = useUniverseStore();
   const pointsRef = useRef<THREE.Points>(null);
+  // Usa o glowMaterial com suporte a Progresso para mudar as cores (Redshift -> Visível)
   const material  = useMemo(() => makeGlowMaterial(), []);
 
   useFrame((state) => {
     if (!pointsRef.current) return;
     material.uniforms.uTime.value = state.clock.elapsedTime * 0.10;
+    material.uniforms.uProgress.value = progress;
+    material.uniforms.uIsNebula.value = 1.0; // Diz ao shader para não transformar essas partículas em estrelas
+
+    // Na idade das trevas (36-48%) o gás é escuro/infravermelho. No alvorecer (48-65%) ele se ilumina pelas estrelas.
+    const redshiftIn = smoothstep(36, 44, progress);
+    const redshiftOut = 1.0 - smoothstep(48, 65, progress);
+    material.uniforms.uRedshift.value = redshiftIn * redshiftOut * 2.5;
+
     const arr    = pointsRef.current.geometry.attributes.alpha.array as Float32Array;
-    const target = smoothstep(70, 92, progress);
+    // O gás surge na idade das trevas e se mantém até o fim, sendo "consumido" parcialmente
+    const born = smoothstep(36, 46, progress);
+    const consume = 1.0 - smoothstep(75, 100, progress) * 0.4; // Elas não somem, apenas reduzem de densidade nas galáxias
+
     for (let i = 0; i < NEBULA_COUNT; i++) {
       const s     = nebulaData.seeds[i];
       const pulse = 0.80 + Math.sin(state.clock.elapsedTime * (0.055 + s * 0.07) + s * 31) * 0.20;
-      arr[i]      = target * (0.011 + s * 0.017) * pulse;
+      
+      // Na idade das trevas o gás é mais difuso. No alvorecer ele brilha muito mais (iluminado pelas estrelas).
+      const phaseBoost = THREE.MathUtils.lerp(0.005, 0.022, smoothstep(48, 65, progress));
+      arr[i]      = born * consume * (phaseBoost + s * 0.020) * pulse;
     }
     pointsRef.current.geometry.attributes.alpha.needsUpdate = true;
   });
 
-  if (smoothstep(70, 92, progress) <= 0.01) return null;
+  if (smoothstep(36, 46, progress) <= 0.01) return null;
   return (
     <points ref={pointsRef} material={material}>
       <bufferGeometry>
@@ -844,59 +1123,145 @@ function CosmicNebulaField() {
   );
 }
 
-const coreFragments = [
-  { position: [0, 0, 0] as [number, number, number], color: '#fff7ad', radius: 3.2 },
-  { position: [3.8, -1.2, 1.7] as [number, number, number], color: '#ff8a3d', radius: 2.3 },
-  { position: [-3.1, 1.6, -1.9] as [number, number, number], color: '#fef3c7', radius: 2.6 },
-  { position: [1.2, 2.9, -3.2] as [number, number, number], color: '#93c5fd', radius: 1.8 }
-];
+function makeImmersivePlasmaMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uOpacity: { value: 1.0 },
+      uProgress: { value: 0.0 }
+    },
+    vertexShader: `
+      varying vec3 vPosition;
+      void main() {
+        vPosition = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform float uOpacity;
+      uniform float uProgress;
+      varying vec3 vPosition;
+
+      // Funções de ruído Simplex 3D otimizadas
+      vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+      vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+      vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+      vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+      float snoise(vec3 v) {
+        const vec2  C = vec2(1.0/6.0, 1.0/3.0);
+        const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+        vec3 i  = floor(v + dot(v, C.yyy));
+        vec3 x0 = v - i + dot(i, C.xxx);
+        vec3 g = step(x0.yzx, x0.xyz);
+        vec3 l = 1.0 - g;
+        vec3 i1 = min( g.xyz, l.zxy );
+        vec3 i2 = max( g.xyz, l.zxy );
+        vec3 x1 = x0 - i1 + C.xxx;
+        vec3 x2 = x0 - i2 + C.yyy;
+        vec3 x3 = x0 - D.yyy;
+        i = mod289(i);
+        vec4 p = permute( permute( permute(
+                   i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                 + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+                 + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+        float n_ = 0.142857142857;
+        vec3  ns = n_ * D.wyz - D.xzx;
+        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+        vec4 x_ = floor(j * ns.z);
+        vec4 y_ = floor(j - 7.0 * x_ );
+        vec4 x = x_ *ns.x + ns.yyyy;
+        vec4 y = y_ *ns.x + ns.yyyy;
+        vec4 h = 1.0 - abs(x) - abs(y);
+        vec4 b0 = vec4( x.xy, y.xy );
+        vec4 b1 = vec4( x.zw, y.zw );
+        vec4 s0 = floor(b0)*2.0 + 1.0;
+        vec4 s1 = floor(b1)*2.0 + 1.0;
+        vec4 sh = -step(h, vec4(0.0));
+        vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+        vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+        vec3 p0 = vec3(a0.xy,h.x);
+        vec3 p1 = vec3(a0.zw,h.y);
+        vec3 p2 = vec3(a1.xy,h.z);
+        vec3 p3 = vec3(a1.zw,h.w);
+        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+        p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+        vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+        m = m * m;
+        return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
+      }
+
+      // Paleta épica de plasma termal
+      vec3 getPlasmaColor(float t, float progress) {
+          // Fase 1: Singularity/Inflation (Extremamente quente, branco/azulado para púrpura)
+          vec3 ultraHot = mix(vec3(0.5, 0.1, 0.9), vec3(1.0, 1.0, 1.0), t * t);
+          // Fase 2: Plasma esfriando (Laranja, amarelo incandescente)
+          vec3 warmPlasma = mix(vec3(0.8, 0.1, 0.0), vec3(1.0, 0.9, 0.4), t);
+          
+          float mixPhase = clamp(progress / 12.0, 0.0, 1.0);
+          return mix(ultraHot, warmPlasma, mixPhase);
+      }
+
+      void main() {
+        vec3 dir = normalize(vPosition);
+        
+        // Movimento orgânico e viscoso
+        float time = uTime * 0.15;
+        vec3 warp = vec3(
+          snoise(dir * 1.5 + time),
+          snoise(dir * 1.5 - time + 10.0),
+          snoise(dir * 1.5 + time * 0.8 + 20.0)
+        );
+        
+        // Noise principal para as correntes de plasma
+        float n1 = snoise(dir * 2.0 + warp * 1.5 + time * 2.0);
+        float n2 = snoise(dir * 4.0 - warp + time * 3.0) * 0.5;
+        float n3 = snoise(dir * 8.0 + warp * 0.5 - time * 1.5) * 0.25;
+        
+        float noise = (n1 + n2 + n3);
+        // Remapeia ruído para destacar os fios/filamentos de plasma
+        float plasmaEnergy = clamp(noise * 0.5 + 0.5, 0.0, 1.0);
+        plasmaEnergy = smoothstep(0.1, 0.9, plasmaEnergy);
+
+        vec3 color = getPlasmaColor(plasmaEnergy, uProgress);
+
+        // Alpha intenso nas correntes, mais fraco no fundo para dar volumetria
+        float alpha = clamp(plasmaEnergy * 1.2, 0.0, 1.0) * uOpacity;
+
+        // Efeito de vinheta para concentrar a luz
+        float vignette = 1.0 - smoothstep(0.4, 1.5, length(dir.xy));
+        color *= vignette;
+
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.BackSide,
+    blending: THREE.AdditiveBlending,
+  });
+}
 
 function BigBangCore() {
   const { progress } = useUniverseStore();
-  const groupRef = useRef<THREE.Group>(null);
-  const glowRef = useRef<THREE.Mesh>(null);
-  const visibility = Math.max(0, 1 - smoothstep(2.6, 8.5, progress));
+  const material = useMemo(() => makeImmersivePlasmaMaterial(), []);
+  
+  // O plasma fluido/viscoso dura até a transparência (38%) e some gradativamente
+  const visibility = 1.0 - smoothstep(18, 38, progress);
 
   useFrame((state) => {
-    const time = state.clock.elapsedTime;
-    const pressure = smoothstep(0, 4, progress);
-    const instability = 1 + Math.sin(time * (11 + pressure * 18)) * (0.1 + pressure * 0.22) + Math.sin(time * 23.3) * (0.04 + pressure * 0.08);
-    const inflationKick = 1 + smoothstep(4, 7.8, progress) * 3.2;
-
-    if (groupRef.current) {
-      groupRef.current.rotation.x = Math.sin(time * (2.4 + pressure * 4.5)) * (0.45 + pressure * 0.35);
-      groupRef.current.rotation.y = time * (1.35 + pressure * 3.4);
-      groupRef.current.rotation.z = Math.cos(time * (1.7 + pressure * 4.2)) * (0.32 + pressure * 0.42);
-      groupRef.current.scale.setScalar(instability * inflationKick);
-    }
-
-    if (glowRef.current) {
-      glowRef.current.scale.setScalar((1.2 + pressure * 1.4 + smoothstep(4, 8, progress) * 8.5) * instability);
-      (glowRef.current.material as THREE.MeshBasicMaterial).opacity = visibility * 0.16;
-    }
+    material.uniforms.uTime.value = state.clock.elapsedTime;
+    material.uniforms.uOpacity.value = visibility * 0.8;
+    material.uniforms.uProgress.value = progress;
   });
 
   if (visibility <= 0.01) return null;
 
   return (
-    <group>
-      <mesh ref={glowRef}>
-        <sphereGeometry args={[5.5, 32, 32]} />
-        <meshBasicMaterial color="#fef3c7" transparent opacity={0.16} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-      <group ref={groupRef}>
-        {coreFragments.map((fragment, index) => (
-          <mesh key={fragment.color} position={fragment.position} rotation={[index * 0.7, index * 1.1, index * 0.45]}>
-            <icosahedronGeometry args={[fragment.radius, 1]} />
-            <meshBasicMaterial color={fragment.color} transparent opacity={visibility * 0.88} blending={THREE.AdditiveBlending} depthWrite={false} />
-          </mesh>
-        ))}
-        <mesh rotation={[0.8, 0.2, 1.3]}>
-          <torusKnotGeometry args={[4.6, 0.45, 72, 8, 2, 3]} />
-          <meshBasicMaterial color="#60a5fa" transparent opacity={visibility * 0.38} blending={THREE.AdditiveBlending} depthWrite={false} />
-        </mesh>
-      </group>
-    </group>
+    <mesh>
+      <sphereGeometry args={[400, 64, 64]} />
+      <primitive object={material} attach="material" />
+    </mesh>
   );
 }
 
@@ -1242,6 +1607,7 @@ export default function UniverseSimulator() {
         raycaster={PARTICLE_RAYCASTER}
       >
         <SceneBackground />
+        <CosmicBackgroundRadiation />
         <ambientLight intensity={0.5} />
         <BigBangCore />
         <PlasmaFog />
@@ -1249,8 +1615,13 @@ export default function UniverseSimulator() {
         <CosmicNebulaField />
         <TransitionEffects />
         <CosmicParticles field={field} />
+        <PrimordialLensing anchors={field.anchors} />
+        <CosmicVolumetricNebulae anchors={field.anchors} />
+        <StromgrenBubbles anchors={field.anchors} />
+        <CosmicWebFilaments anchors={field.anchors} anchorScales={field.anchorScale} />
         <CenterlessExpansionVectors field={field} />
         <CameraDirector />
+        <BloomPostProcessing />
       </Canvas>
       <CenterlessMarker />
       <CinematicHud />

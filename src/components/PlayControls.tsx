@@ -3,12 +3,12 @@ import { Pause, Play, RotateCcw } from 'lucide-react';
 import { useUniverseStore } from '../store/useUniverseStore';
 
 function getPlaybackSpeed(progress: number) {
-  if (progress < 4) return 0.9;
-  if (progress < 12) return 2.8;
-  if (progress < 65) return 1.75;
-  if (progress < 75) return 1.35;
-  if (progress < 85) return 1.05;
-  return 0.86;
+  if (progress < 4) return 0.5;
+  if (progress < 12) return 1.5;
+  if (progress < 65) return 0.95;
+  if (progress < 75) return 0.8;
+  if (progress < 85) return 0.7;
+  return 0.6;
 }
 
 export default function PlayControls() {

@@ -15,11 +15,11 @@ export function getVisualPhase(progress: number): VisualPhase {
   if (progress < 12) return 'inflation';
   if (progress < 22) return 'plasma';
   if (progress < 34) return 'recombination';
-  if (progress < 42) return 'atoms';
-  if (progress < 52) return 'dark-ages';
-  if (progress < 65) return 'first-stars';
-  if (progress < 75) return 'galaxies';
-  if (progress < 85) return 'spiral-clusters';
+  if (progress < 40) return 'atoms';
+  if (progress < 48) return 'dark-ages';
+  if (progress < 62) return 'first-stars';
+  if (progress < 72) return 'galaxies';
+  if (progress < 82) return 'spiral-clusters';
   return 'cosmic-web';
 }
 
@@ -39,15 +39,20 @@ type VisualProfile = {
 };
 
 function getCameraDistance(progress: number) {
-  if (progress < 4) return 95;
-  if (progress < 8) return 95 + Math.pow(smoothstep(4, 8, progress), 0.28) * 425;
-  if (progress < 22) return 520 - smoothstep(8, 22, progress) * 48;
-  if (progress < 34) return 472 - smoothstep(22, 34, progress) * 92;
-  if (progress < 48) return 380 - smoothstep(34, 48, progress) * 72;
-  if (progress < 65) return 308 - smoothstep(48, 65, progress) * 10;
-  if (progress < 75) return 298 + smoothstep(65, 75, progress) * 62;
-  if (progress < 85) return 360 - smoothstep(75, 85, progress) * 60;
-  return 300 + smoothstep(85, 100, progress) * 180;
+  // 0-22%: Câmera dentro do plasma/neblina
+  if (progress < 4) return 0.1;
+  if (progress < 12) return 0.1 + smoothstep(4, 12, progress) * 2;
+  if (progress < 22) return 2.1 + smoothstep(12, 22, progress) * 10;
+  
+  // 22-48%: Recuando enquanto o universo fica transparente
+  if (progress < 34) return 12.1 + smoothstep(22, 34, progress) * 150;
+  if (progress < 48) return 162.1 + smoothstep(34, 48, progress) * 100;
+  
+  // 48-100%: Visão de larga escala (fora)
+  if (progress < 65) return 262.1 + smoothstep(48, 65, progress) * 45;
+  if (progress < 75) return 307.1 + smoothstep(65, 75, progress) * 50;
+  if (progress < 85) return 357.1 - smoothstep(75, 85, progress) * 50;
+  return 307.1 + smoothstep(85, 100, progress) * 180;
 }
 
 export function getVisualProfile(progress: number): VisualProfile {
