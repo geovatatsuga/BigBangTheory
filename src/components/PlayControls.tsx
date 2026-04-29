@@ -5,9 +5,10 @@ import { useUniverseStore } from '../store/useUniverseStore';
 function getPlaybackSpeed(progress: number) {
   if (progress < 4) return 0.5;
   if (progress < 12) return 1.5;
-  if (progress < 65) return 0.95;
-  if (progress < 75) return 0.8;
-  if (progress < 85) return 0.7;
+  if (progress < 22) return 0.8;
+  if (progress < 58) return 0.46;
+  if (progress < 70) return 0.62;
+  if (progress < 90) return 0.72;
   return 0.6;
 }
 

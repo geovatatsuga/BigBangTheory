@@ -8,7 +8,7 @@ import { CenterlessMarker, CinematicHud } from './universe/SceneHud';
 import { applyPhaseColor, getParticleAlpha, getParticleSize, getScale } from './universe/particleAppearance';
 import { BloomPostProcessing, CosmicVolumetricNebulae, CosmicWebFilaments, StromgrenBubbles } from './universe/CosmicEffects';
 
-const NUM_PARTICLES = 18000;
+const NUM_PARTICLES = 24000;
 const BOUNDS = 820;
 const VECTOR_COUNT = 34;
 const PARTICLE_RAYCASTER = { params: { Points: { threshold: 7 } } } as any;
@@ -314,7 +314,7 @@ function createParticleField(): ParticleField {
 
   // ---- galactic anchors distributed across the full volume ----
   // Lay them on a loose Fibonacci lattice in 3-D for even coverage then jitter
-  const NUM_ANCHORS = 60;
+  const NUM_ANCHORS = 84;
   const anchors: THREE.Vector3[] = [];
   const anchorArms   = new Uint8Array(NUM_ANCHORS);
   const anchorType   = new Uint8Array(NUM_ANCHORS);
@@ -353,10 +353,10 @@ function createParticleField(): ParticleField {
     const goldenRatio = (1 + Math.sqrt(5)) / 2;
     const phi = Math.acos(1 - 2 * (a + 0.5) / NUM_ANCHORS);
     const theta = 2 * Math.PI * a / goldenRatio;
-    const r = BOUNDS * (0.28 + rng() * 0.36); // keep away from extreme edges
-    const jx = (rng() - 0.5) * BOUNDS * 0.18;
-    const jy = (rng() - 0.5) * BOUNDS * 0.18;
-    const jz = (rng() - 0.5) * BOUNDS * 0.18;
+    const r = BOUNDS * (0.24 + rng() * 0.44); // keep away from extreme edges
+    const jx = (rng() - 0.5) * BOUNDS * 0.14;
+    const jy = (rng() - 0.5) * BOUNDS * 0.16;
+    const jz = (rng() - 0.5) * BOUNDS * 0.14;
     anchors.push(new THREE.Vector3(
       Math.sin(phi) * Math.cos(theta) * r + jx,
       Math.cos(phi) * r * 0.72 + jy,       // slightly flattened vertically
@@ -382,7 +382,7 @@ function createParticleField(): ParticleField {
     const seed = Math.random();
     seeds[i] = seed;
 
-    const inCluster = Math.random() < 0.91; // keep late galaxies visibly dense
+    const inCluster = Math.random() < 0.94; // keep late galaxies visibly dense
     // pick anchor — prefer ones that haven't been filled yet by weighting
     const aIdx = Math.floor(Math.random() * NUM_ANCHORS);
     const anchor = anchors[aIdx];
@@ -390,7 +390,7 @@ function createParticleField(): ParticleField {
     const theta2 = Math.random() * Math.PI * 2;
     const phi2   = Math.acos(Math.random() * 2 - 1);
     // Cluster radius varies by galaxy scale
-    const clusterR = 48 * anchorScale[aIdx];
+    const clusterR = 42 * anchorScale[aIdx];
     const spreadR  = inCluster
       ? Math.pow(Math.random(), 1.8) * clusterR
       : Math.pow(Math.random(), 0.55) * BOUNDS * 0.52;
@@ -525,9 +525,9 @@ function CosmicParticles({ field }: { field: ParticleField }) {
         const centerX = field.clusterCenters[base];
         const centerY = field.clusterCenters[base + 1];
         const centerZ = field.clusterCenters[base + 2];
-        const formation = smoothstep(54, 94, progress);
-        const mature    = smoothstep(64, 94, progress);
-        const spiralT   = phase === 'spiral-clusters' ? smoothstep(74, 88, progress) : (phase === 'cosmic-web' ? 1 : 0);
+        const formation = smoothstep(62, 96, progress);
+        const mature    = smoothstep(70, 96, progress);
+        const spiralT   = phase === 'spiral-clusters' ? smoothstep(82, 92, progress) : (phase === 'cosmic-web' ? 1 : 0);
 
         const rawDx = field.basePositions[base] - centerX;
         const rawDy = field.basePositions[base + 1] - centerY;
@@ -556,7 +556,7 @@ function CosmicParticles({ field }: { field: ParticleField }) {
           const spiralBoost  = THREE.MathUtils.lerp(1, 1.72, spiralT) * gScale;
           const sourceRadius = Math.sqrt(rawDx * rawDx + rawDz * rawDz);
           const radius = THREE.MathUtils.clamp(sourceRadius * THREE.MathUtils.lerp(0.72, 0.98, mature), 4, 150) * spiralBoost;
-          const bulgeRadius = 14 * gScale;
+          const bulgeRadius = 18 * gScale;
           const inBulge = radius < bulgeRadius;
 
           let gx = 0, gy = 0, gz = 0;
@@ -631,7 +631,7 @@ function CosmicParticles({ field }: { field: ParticleField }) {
           const gy3 = gx * sinTZ + gy2 * cosTZ;
           const gz3 = gz2;
 
-          const armPull = formation * smoothstep(54, 94, progress);
+          const armPull = formation * smoothstep(62, 96, progress);
           bx = THREE.MathUtils.lerp(bx, centerX + gx3, armPull);
           by = THREE.MathUtils.lerp(by, centerY + gy3, armPull * 0.85);
           bz = THREE.MathUtils.lerp(bz, centerZ + gz3, armPull);
@@ -656,21 +656,21 @@ function CosmicParticles({ field }: { field: ParticleField }) {
       const colorAnchor = field.anchorIndex[i];
       if (colorAnchor >= 0 && progress >= 58) {
         const hue = field.anchorHue[colorAnchor] / 360;
-        const baseWarmth = smoothstep(58, 92, progress);
+        const baseWarmth = smoothstep(66, 92, progress);
         const cosmicBoost = smoothstep(82, 100, progress) * 0.65;
         const anchorWarmth = Math.min(0.95, baseWarmth + cosmicBoost) * (kind < 0.72 ? 0.78 : 0.22);
         // Core quente/amarelo, braços com cor do anchor, HII em azul/rosa
         const isCore = kind < 0.12;
         const isArm  = kind < 0.48;
-        const anchorLight = isCore ? 0.82 + seed * 0.14
-          : isArm  ? 0.55 + seed * 0.28
+        const anchorLight = isCore ? 0.9 + seed * 0.1
+          : isArm  ? 0.52 + seed * 0.24
           : kind < 0.72 ? 0.42 + seed * 0.32
           : 0.16 + seed * 0.10;
-        const anchorSat = isCore ? 0.62 : kind < 0.72 ? 0.72 : 0.28;
+        const anchorSat = isCore ? 0.48 : kind < 0.72 ? 0.62 : 0.22;
         // Regiões HII: pontos brilhantes azul/rosa nos braços espirais
-        const hiiChance = seed > 0.86 && kind < 0.55;
-        const finalHue = hiiChance ? (seed > 0.93 ? 0.60 : 0.95) : hue;
-        color.lerp(anchorColor.setHSL(finalHue, hiiChance ? 0.98 : anchorSat, hiiChance ? 0.70 + seed * 0.18 : anchorLight), anchorWarmth);
+        const hiiChance = seed > 0.94 && kind > 0.16 && kind < 0.55;
+        const finalHue = hiiChance ? (seed > 0.972 ? 0.58 : 0.98) : hue;
+        color.lerp(anchorColor.setHSL(finalHue, hiiChance ? 0.58 : anchorSat, hiiChance ? 0.48 + seed * 0.12 : anchorLight), anchorWarmth);
       }
 
       if (activeMode === 'centerless' && i === selected) {
@@ -826,10 +826,10 @@ function SceneBackground() {
       bgColor.lerpColors(plasmaHot, plasmaWarm, smoothstep(4, 12, progress));
     } else if (progress < 22) {
       bgColor.lerpColors(plasmaWarm, plasmaCool, smoothstep(12, 22, progress));
-    } else if (progress < 42) {
-      bgColor.lerpColors(plasmaCool, darkAges, smoothstep(22, 42, progress));
-    } else if (progress < 70) {
-      bgColor.lerpColors(darkAges, voidBlack, smoothstep(42, 70, progress));
+    } else if (progress < 36) {
+      bgColor.lerpColors(plasmaCool, darkAges, smoothstep(22, 36, progress));
+    } else if (progress < 58) {
+      bgColor.lerpColors(darkAges, voidBlack, smoothstep(36, 58, progress));
     } else {
       bgColor.copy(voidBlack); // Fundo sempre preto no final (gostei do preto)
     }
@@ -844,10 +844,10 @@ function SceneBackground() {
       } else {
          if (progress < 22) {
            scene.fog.density = 0.04; // Levemente reduzido para ver a "sopa"
-         } else if (progress < 38) {
+        } else if (progress < 42) {
            // Fog dissipa muito mais rápido (Fiat Lux completo em 38%)
            // Reduzimos a densidade para o CMB brilhar atrás
-           const dissipate = 1.0 - smoothstep(22, 38, progress);
+           const dissipate = 1.0 - smoothstep(22, 42, progress);
            scene.fog.density = 0.025 * dissipate; 
          } else {
            scene.fog.density = 0.0; // Transparente
@@ -895,7 +895,7 @@ function PrimordialLensing({ anchors }: { anchors: THREE.Vector3[] }) {
 
         void main() {
           // Aparece apenas durante as eras escuras e formação de galáxias
-          float intensity = smoothstep(42, 55, uProgress) * (1.0 - smoothstep(75, 95, uProgress));
+          float intensity = smoothstep(48.0, 62.0, uProgress) * (1.0 - smoothstep(82.0, 98.0, uProgress));
           if (intensity <= 0.01) discard;
 
           vec2 uv = vUv;
@@ -1047,7 +1047,7 @@ function BackgroundStarField() {
 }
 
 // ── Nebula clouds: large colorful gaseous puffs floating between galaxies ──
-const NEBULA_COUNT = 240;
+const NEBULA_COUNT = 150;
 const nebulaData = (() => {
   const positions = new Float32Array(NEBULA_COUNT * 3);
   const colors    = new Float32Array(NEBULA_COUNT * 3);
@@ -1056,7 +1056,7 @@ const nebulaData = (() => {
   const seeds     = new Float32Array(NEBULA_COUNT);
   const color     = new THREE.Color();
   const rng       = lcg(3141);
-  const nebHues   = [0.78, 0.85, 0.52, 0.65, 0.0, 0.12, 0.72, 0.43, 0.92, 0.33, 0.58, 0.22, 0.96, 0.48];
+  const nebHues   = [0.97, 0.0, 0.03, 0.08, 0.58, 0.6, 0.12, 0.95];
   for (let i = 0; i < NEBULA_COUNT; i++) {
     const seed  = rng();
     seeds[i]    = seed;
@@ -1067,11 +1067,11 @@ const nebulaData = (() => {
     positions[i * 3 + 1] = Math.cos(phi) * r * 0.58;
     positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * r;
     const hue = nebHues[Math.floor(rng() * nebHues.length)];
-    color.setHSL(hue, 0.88 + rng() * 0.12, 0.42 + rng() * 0.38);
+    color.setHSL(hue, 0.38 + rng() * 0.22, 0.24 + rng() * 0.28);
     colors[i * 3]     = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
-    sizes[i]  = 260 + rng() * 520;
+    sizes[i]  = 160 + rng() * 360;
     alphas[i] = 0;
   }
   return { positions, colors, sizes, alphas, seeds };
@@ -1090,27 +1090,27 @@ function CosmicNebulaField() {
     material.uniforms.uIsNebula.value = 1.0; // Diz ao shader para não transformar essas partículas em estrelas
 
     // Na idade das trevas (36-48%) o gás é escuro/infravermelho. No alvorecer (48-65%) ele se ilumina pelas estrelas.
-    const redshiftIn = smoothstep(36, 44, progress);
-    const redshiftOut = 1.0 - smoothstep(48, 65, progress);
-    material.uniforms.uRedshift.value = redshiftIn * redshiftOut * 2.5;
+    const redshiftIn = smoothstep(48, 58, progress);
+    const redshiftOut = 1.0 - smoothstep(62, 78, progress);
+    material.uniforms.uRedshift.value = redshiftIn * redshiftOut * 1.7;
 
     const arr    = pointsRef.current.geometry.attributes.alpha.array as Float32Array;
     // O gás surge na idade das trevas e se mantém até o fim, sendo "consumido" parcialmente
-    const born = smoothstep(36, 46, progress);
-    const consume = 1.0 - smoothstep(75, 100, progress) * 0.4; // Elas não somem, apenas reduzem de densidade nas galáxias
+    const born = smoothstep(50, 66, progress);
+    const consume = 1.0 - smoothstep(78, 100, progress) * 0.62; // Elas não somem, apenas reduzem de densidade nas galáxias
 
     for (let i = 0; i < NEBULA_COUNT; i++) {
       const s     = nebulaData.seeds[i];
       const pulse = 0.80 + Math.sin(state.clock.elapsedTime * (0.055 + s * 0.07) + s * 31) * 0.20;
       
       // Na idade das trevas o gás é mais difuso. No alvorecer ele brilha muito mais (iluminado pelas estrelas).
-      const phaseBoost = THREE.MathUtils.lerp(0.005, 0.022, smoothstep(48, 65, progress));
-      arr[i]      = born * consume * (phaseBoost + s * 0.020) * pulse;
+      const phaseBoost = THREE.MathUtils.lerp(0.002, 0.011, smoothstep(60, 76, progress));
+      arr[i]      = born * consume * (phaseBoost + s * 0.008) * pulse;
     }
     pointsRef.current.geometry.attributes.alpha.needsUpdate = true;
   });
 
-  if (smoothstep(36, 46, progress) <= 0.01) return null;
+  if (smoothstep(50, 66, progress) <= 0.01) return null;
   return (
     <points ref={pointsRef} material={material}>
       <bufferGeometry>

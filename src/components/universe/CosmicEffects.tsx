@@ -316,7 +316,7 @@ function VolumetricNebula({ anchor, radius, hue, opacity }: {
     material.uniforms.uCamPos.value.copy(state.camera.position);
     material.uniforms.uOpacity.value = opacity;
     material.uniforms.uCenter.value.set(anchor.x * s, anchor.y * s, anchor.z * s);
-    material.uniforms.uRadius.value = radius * s * 0.22;
+    material.uniforms.uRadius.value = radius * s * 0.14;
   });
 
   if (opacity <= 0.01) return null;
@@ -326,14 +326,14 @@ function VolumetricNebula({ anchor, radius, hue, opacity }: {
       position={[anchor.x * scale, anchor.y * scale, anchor.z * scale]}
       material={material}
     >
-      <sphereGeometry args={[radius * scale * 0.22, 24, 12]} />
+      <sphereGeometry args={[radius * scale * 0.14, 24, 12]} />
     </mesh>
   );
 }
 
 export function CosmicVolumetricNebulae({ anchors }: { anchors: THREE.Vector3[] }) {
   const { progress, activeMode } = useUniverseStore();
-  const opacity = activeMode === 'timeline' ? smoothstep(65, 82, progress) * 0.85 : 0;
+  const opacity = activeMode === 'timeline' ? smoothstep(72, 88, progress) * 0.28 : 0;
 
   if (opacity <= 0.01) return null;
 
@@ -567,15 +567,15 @@ function makeStromgrenMaterial() {
         if (normDist > 1.0) discard;
 
         // Borda rosa (Emissão H-alpha) e núcleo azul (Estrela Pop III quente)
-        vec3 coreColor = vec3(0.5, 0.7, 1.0); // Azul claro quente
-        vec3 edgeColor = vec3(0.9, 0.2, 0.4); // Rosa avermelhado (H-alpha)
+        vec3 coreColor = vec3(0.72, 0.82, 1.0);
+        vec3 edgeColor = vec3(0.95, 0.42, 0.34);
         
         vec3 color = mix(coreColor, edgeColor, pow(normDist, 2.0));
         
         // Bordas mais densas, núcleo brilhante, desvanece suave
-        float alpha = (1.0 - pow(normDist, 3.0)) * uOpacity;
+        float alpha = (1.0 - pow(normDist, 3.0)) * uOpacity * 0.45;
         // Borda brilhante
-        alpha += smoothstep(0.8, 0.95, normDist) * smoothstep(1.0, 0.95, normDist) * uOpacity * 1.5;
+        alpha += smoothstep(0.84, 0.98, normDist) * smoothstep(1.0, 0.96, normDist) * uOpacity * 0.35;
 
         gl_FragColor = vec4(color, alpha);
       }
@@ -595,9 +595,9 @@ function StromgrenBubble({ anchor, maxRadius }: { anchor: THREE.Vector3, maxRadi
     const scale = getScale(progress);
     
     // Bolhas aparecem entre 48 e 60, crescem e se dissipam (reionização completa)
-    const born = smoothstep(48, 54, progress);
-    const dissipate = 1.0 - smoothstep(54, 62, progress);
-    const opacity = born * dissipate * 0.85;
+    const born = smoothstep(62, 70, progress);
+    const dissipate = 1.0 - smoothstep(76, 88, progress);
+    const opacity = born * dissipate * 0.22;
     
     material.uniforms.uTime.value = state.clock.elapsedTime;
     material.uniforms.uOpacity.value = opacity;
@@ -608,7 +608,7 @@ function StromgrenBubble({ anchor, maxRadius }: { anchor: THREE.Vector3, maxRadi
   const scale = getScale(progress);
 
   // Só renderiza entre 48 e 62%
-  if (progress < 47 || progress > 63) return null;
+  if (progress < 61 || progress > 89) return null;
 
   return (
     <mesh position={[anchor.x * scale, anchor.y * scale, anchor.z * scale]}>
@@ -624,12 +624,12 @@ export function StromgrenBubbles({ anchors }: { anchors: THREE.Vector3[] }) {
   if (activeMode !== 'timeline') return null;
 
   // Pegamos alguns anchors primordiais para serem os focos das bolhas
-  const bubbleAnchors = anchors.slice(0, 15);
+  const bubbleAnchors = anchors.slice(0, 8);
 
   return (
     <>
       {bubbleAnchors.map((anchor, i) => (
-        <StromgrenBubble key={i} anchor={anchor} maxRadius={12 + (i % 5) * 4} />
+        <StromgrenBubble key={i} anchor={anchor} maxRadius={8 + (i % 4) * 2.5} />
       ))}
     </>
   );

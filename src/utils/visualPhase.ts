@@ -14,12 +14,12 @@ export function getVisualPhase(progress: number): VisualPhase {
   if (progress < 4) return 'big-bang';
   if (progress < 12) return 'inflation';
   if (progress < 22) return 'plasma';
-  if (progress < 34) return 'recombination';
-  if (progress < 40) return 'atoms';
-  if (progress < 48) return 'dark-ages';
-  if (progress < 62) return 'first-stars';
-  if (progress < 72) return 'galaxies';
-  if (progress < 82) return 'spiral-clusters';
+  if (progress < 36) return 'recombination';
+  if (progress < 48) return 'atoms';
+  if (progress < 58) return 'dark-ages';
+  if (progress < 70) return 'first-stars';
+  if (progress < 80) return 'galaxies';
+  if (progress < 90) return 'spiral-clusters';
   return 'cosmic-web';
 }
 
@@ -45,8 +45,8 @@ function getCameraDistance(progress: number) {
   if (progress < 22) return 2.1 + smoothstep(12, 22, progress) * 10;
   
   // 22-48%: Recuando enquanto o universo fica transparente
-  if (progress < 34) return 12.1 + smoothstep(22, 34, progress) * 150;
-  if (progress < 48) return 162.1 + smoothstep(34, 48, progress) * 100;
+  if (progress < 36) return 12.1 + smoothstep(22, 36, progress) * 150;
+  if (progress < 58) return 162.1 + smoothstep(36, 58, progress) * 100;
   
   // 48-100%: Visão de larga escala (fora)
   if (progress < 65) return 262.1 + smoothstep(48, 65, progress) * 45;
@@ -95,52 +95,52 @@ export function getVisualProfile(progress: number): VisualProfile {
   }
 
   if (phase === 'recombination') {
-    const clear = smoothstep(22, 34, progress);
+    const clear = smoothstep(22, 36, progress);
     return {
       title: 'Recombinacao',
       scaleLabel: '380.000 anos',
       caption: 'Eletrons se prendem aos nucleos e a luz passa a viajar livre.',
-      light: 0.78 - clear * 0.54,
-      gas: 0.9 - clear * 0.24,
+      light: 0.78 - clear * 0.48,
+      gas: 0.9 - clear * 0.2,
       stars: 0,
       cameraDistance: getCameraDistance(progress)
     };
   }
 
   if (phase === 'atoms') {
-    const cooling = smoothstep(34, 40, progress);
+    const cooling = smoothstep(36, 48, progress);
     return {
       title: 'Primeiros atomos',
       scaleLabel: 'Antes das estrelas',
       caption: 'Hidrogenio e helio neutros dominam um Universo ainda sem estrelas.',
-      light: 0.24 - cooling * 0.12,
-      gas: 0.68 - cooling * 0.12,
+      light: 0.3 - cooling * 0.16,
+      gas: 0.7 - cooling * 0.08,
       stars: 0,
       cameraDistance: getCameraDistance(progress)
     };
   }
 
   if (phase === 'dark-ages') {
-    const darkness = smoothstep(40, 48, progress);
+    const darkness = smoothstep(48, 58, progress);
     return {
       title: 'Idade das Trevas',
       scaleLabel: 'Rumo ao alvorecer',
       caption: 'Nuvens de gas escuro se preparam para formar as primeiras estrelas.',
-      light: 0.12 - darkness * 0.08,
-      gas: 0.56,
+      light: 0.12 - darkness * 0.07,
+      gas: 0.54,
       stars: 0,
       cameraDistance: getCameraDistance(progress)
     };
   }
 
   if (phase === 'first-stars') {
-    const born = smoothstep(52, 62, progress);
+    const born = smoothstep(60, 70, progress);
     return {
       title: 'Alvorecer cosmico',
       scaleLabel: '100-300 milhoes de anos',
       caption: 'Surgem estrelas Populacao III: massivas, quentes e azul-brancas.',
-      light: 0.04 + born * 0.7,
-      gas: 0.56 - born * 0.24,
+      light: 0.05 + born * 0.72,
+      gas: 0.54 - born * 0.24,
       stars: born,
       cameraDistance: getCameraDistance(progress)
     };
@@ -159,7 +159,7 @@ export function getVisualProfile(progress: number): VisualProfile {
   }
 
   if (phase === 'spiral-clusters') {
-    const density = smoothstep(75, 85, progress);
+    const density = smoothstep(80, 90, progress);
     return {
       title: 'Grandes estruturas',
       scaleLabel: 'Galaxias maduras',
@@ -171,7 +171,7 @@ export function getVisualProfile(progress: number): VisualProfile {
     };
   }
 
-  const webT = smoothstep(85, 100, progress);
+  const webT = smoothstep(90, 100, progress);
   if (progress < 98) {
     return {
       title: 'Nascimento do Sol',
