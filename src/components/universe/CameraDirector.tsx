@@ -25,24 +25,32 @@ export default function CameraDirector() {
     }
 
     const profile = getVisualProfile(progress);
-    const orbit = state.clock.elapsedTime * 0.12;
-    const lateOrbit = smoothstep(72, 90, progress);
-    
-    // Na fase do plasma (0-22), a câmera deve estar no centro (x=0, y=0)
-    const outPhase = smoothstep(12, 34, progress);
-    const targetX = Math.sin(orbit) * THREE.MathUtils.lerp(18, 42, lateOrbit) * outPhase;
-    const targetY = (16 + Math.sin(orbit * 0.7) * 10) * outPhase;
-    const targetZ = profile.cameraDistance;
+    const targetDistance = profile.cameraDistance;
 
+    // Configuração dos controles de órbita padrão
     controls.enabled = progress > 62;
     controls.enablePan = false;
     controls.enableZoom = true;
-    controls.autoRotate = progress > 72;
-    controls.autoRotateSpeed = 0.06;
-    camera.position.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.032);
+    
+    // Mantém rotação automática circular contínua e suave para a sensação tridimensional
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.28; // Velocidade majestosa cósmica
+
+    // Suaviza o alvo dos controles de câmera no centro
     controls.target.lerp(new THREE.Vector3(0, 0, 0), 0.05);
+
+    // Ajusta apenas a distância da câmera do alvo baseado no progress (sem travar a rotação!)
+    const currentDistance = camera.position.distanceTo(controls.target);
+    const newDistance = THREE.MathUtils.lerp(currentDistance, targetDistance, 0.04);
+
+    const direction = new THREE.Vector3().subVectors(camera.position, controls.target);
+    if (direction.lengthSq() > 0.0001) {
+      direction.normalize();
+      camera.position.copy(direction.multiplyScalar(newDistance).add(controls.target));
+    }
+
     controls.update();
   });
 
-  return <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={0.07} minDistance={55} maxDistance={820} />;
+  return <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={0.07} minDistance={55} maxDistance={2200} />;
 }

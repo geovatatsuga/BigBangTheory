@@ -15,22 +15,22 @@ export function getScale(progress: number) {
   return THREE.MathUtils.lerp(0.98, 1.12, smoothstep(75, 100, progress));
 }
 
+const plasmaHot = new THREE.Color('#ffffff');
+const plasmaWarm = new THREE.Color('#fef9c3');
+const plasmaCool = new THREE.Color('#fbbf24');
+const recombinationAmber = new THREE.Color('#f97316');
+const neutralGas = new THREE.Color('#1f130b');
+const darkGas = new THREE.Color('#06070a');
+const popIIIBlueWhite = new THREE.Color('#dbeafe');
+const warmStar = new THREE.Color('#ffd27a');
+const coolStar = new THREE.Color('#ff9b54');
+
 export function applyPhaseColor(color: THREE.Color, progress: number, seed: number, kind: number) {
   const inflation = smoothstep(4, 12, progress);
   const plasma = smoothstep(12, 22, progress);
   const recombination = smoothstep(22, 36, progress);
   const cooling = smoothstep(36, 58, progress);
   const dawn = smoothstep(60, 70, progress);
-
-  const plasmaHot = new THREE.Color('#ffffff');
-  const plasmaWarm = new THREE.Color('#fef9c3');
-  const plasmaCool = new THREE.Color('#fbbf24');
-  const recombinationAmber = new THREE.Color('#f97316');
-  const neutralGas = new THREE.Color('#1f130b');
-  const darkGas = new THREE.Color('#06070a');
-  const popIIIBlueWhite = new THREE.Color('#dbeafe');
-  const warmStar = new THREE.Color('#ffd27a');
-  const coolStar = new THREE.Color('#ff9b54');
 
   if (progress < 4) {
     color.copy(plasmaHot);
@@ -71,7 +71,7 @@ export function applyPhaseColor(color: THREE.Color, progress: number, seed: numb
   color.lerp(coolStar, warm ? seed * 0.22 : 0);
 }
 
-export function getParticleAlpha(progress: number, seed: number, kind: number) {
+export function getParticleAlpha(progress: number, seed: number, kind: number, time: number = 0) {
   const phase = getVisualPhase(progress);
   if (phase === 'big-bang') return 0.8 + seed * 0.2; 
   
@@ -81,8 +81,15 @@ export function getParticleAlpha(progress: number, seed: number, kind: number) {
   }
   
   if (progress < 48) {
-    // Recombinação: Átomos começam a aparecer conforme o fog limpa
-    return THREE.MathUtils.lerp(0.006, 0.08, smoothstep(24, 48, progress)) * (0.65 + seed * 0.35);
+    // Recombinação / Primeiros Átomos (25% a 48%)
+    // Determinadas partículas começam a se aglutinar e brilhar de forma pulsante
+    const isCondensingAtom = seed > 0.72;
+    if (isCondensingAtom) {
+      const p = smoothstep(22, 48, progress);
+      const pulse = 0.65 + 0.35 * Math.sin(time * 3.2 + seed * 120.0);
+      return p * 0.35 * pulse * (0.8 + seed * 0.2);
+    }
+    return THREE.MathUtils.lerp(0.006, 0.05, smoothstep(22, 48, progress)) * (0.65 + seed * 0.35);
   }
 
   if (phase === 'dark-ages') {
@@ -95,6 +102,12 @@ export function getParticleAlpha(progress: number, seed: number, kind: number) {
   if (phase === 'atoms') return 0.032 + seed * 0.035;
 
   if (phase === 'first-stars' || phase === 'galaxies' || phase === 'spiral-clusters' || phase === 'cosmic-web') {
+    const isHii = seed > 0.94 && kind > 0.16 && kind < 0.55;
+    if (isHii) {
+      const pulse = 0.85 + 0.15 * Math.sin(time * 4.5 + seed * 100.0);
+      return (0.75 + seed * 0.25) * uColorAlphaScale(progress) * pulse;
+    }
+
     const formation = smoothstep(60, 88, progress);
     const earlyStar = kind < 0.18;
     const galaxyStar = smoothstep(68, 82, progress);
@@ -120,7 +133,12 @@ export function getParticleAlpha(progress: number, seed: number, kind: number) {
   return kind < 0.72 ? 0.78 + seed * 0.12 : 0.22;
 }
 
-export function getParticleSize(progress: number, seed: number, kind: number) {
+// Auxiliar para atenuar brilhos antes da ignição completa das galáxias
+function uColorAlphaScale(progress: number) {
+  return smoothstep(62, 80, progress);
+}
+
+export function getParticleSize(progress: number, seed: number, kind: number, time: number = 0) {
   const phase = getVisualPhase(progress);
   if (phase === 'big-bang') return 18 + seed * 10;
   
@@ -130,8 +148,14 @@ export function getParticleSize(progress: number, seed: number, kind: number) {
   }
   
   if (progress < 48) {
-    // Átomos surgindo (pequenos e difusos)
-    return THREE.MathUtils.lerp(0.18, 0.95, smoothstep(24, 48, progress)) + seed * 0.22;
+    // Átomos surgindo (pequenos e difusos, pulsando)
+    const isCondensingAtom = seed > 0.72;
+    if (isCondensingAtom) {
+      const p = smoothstep(22, 48, progress);
+      const pulse = 0.8 + 0.2 * Math.sin(time * 3.2 + seed * 120.0);
+      return THREE.MathUtils.lerp(0.5, 3.2, p) * pulse;
+    }
+    return THREE.MathUtils.lerp(0.18, 0.85, smoothstep(22, 48, progress)) + seed * 0.15;
   }
 
   if (phase === 'dark-ages') return 0.45 + seed * 0.28;
@@ -142,6 +166,12 @@ export function getParticleSize(progress: number, seed: number, kind: number) {
   if (phase === 'atoms') return 0.75 + seed * 0.35;
 
   if (phase === 'first-stars' || phase === 'galaxies' || phase === 'spiral-clusters' || phase === 'cosmic-web') {
+    const isHii = seed > 0.94 && kind > 0.16 && kind < 0.55;
+    if (isHii) {
+      const pulse = 0.88 + 0.12 * Math.sin(time * 4.5 + seed * 100.0);
+      return (8.0 + seed * 10.0) * uColorAlphaScale(progress) * pulse;
+    }
+
     const massive = kind < 0.18;
     const formation = smoothstep(60, 88, progress);
     const earlyStar = massive;

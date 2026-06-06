@@ -213,7 +213,7 @@ const NEBULA_SHADER_FRAG = `
     if (tFar < 0.0) discard;
 
     // ── Raymarch through volume ──
-    const int STEPS = 20;
+    const int STEPS = 35;
     float dt = (tFar - tNear) / float(STEPS);
 
     vec3 totalColor = vec3(0.0);
@@ -226,12 +226,30 @@ const NEBULA_SHADER_FRAG = `
       // Local space: normalized to [-1, 1]
       vec3 localP = (p - uCenter) / uRadius;
 
-      // Sample density with FBM noise
-      float density = fbm(localP * 2.8 + uTime * 0.012);
-      density = smoothstep(0.32, 0.68, density);
+      // Rotação orbital lenta para as nuvens de gás
+      float ang = uTime * 0.035 + hash3(uCenter) * 6.28;
+      float cA = cos(ang);
+      float sA = sin(ang);
+      vec3 rotP = vec3(
+        localP.x * cA - localP.z * sA,
+        localP.y,
+        localP.x * sA + localP.z * cA
+      );
 
-      // Edge falloff (spherical)
-      float edge = 1.0 - smoothstep(0.4, 0.95, length(localP));
+      // Domain Warping para fluxo de gás realista
+      vec3 warp = vec3(
+        fbm(rotP * 2.0 + vec3(uTime * 0.008, 0.0, 0.0)),
+        fbm(rotP * 2.0 + vec3(0.0, uTime * 0.010, 0.0)),
+        fbm(rotP * 2.0 + vec3(0.0, 0.0, uTime * 0.006))
+      );
+
+      // Amostra de densidade com FBM warpeado
+      float density = fbm(rotP * 2.8 + warp * 1.5);
+      density = smoothstep(0.30, 0.70, density);
+
+      // Deformar a borda esférica para parecer nuvem rasgada e irregular
+      float deform = fbm(rotP * 1.6 + uTime * 0.02) * 0.32;
+      float edge = 1.0 - smoothstep(0.08 + deform, 0.98 + deform, length(localP));
       density *= edge;
 
       if (density > 0.005) {
@@ -247,7 +265,7 @@ const NEBULA_SHADER_FRAG = `
         col = mix(col, hotColor, smoothstep(0.6, 0.9, density));
 
         // Front-to-back compositing
-        float a = density * dt * 2.8;
+        float a = density * dt * 0.16;
         totalColor += (1.0 - totalAlpha) * col * a;
         totalAlpha += (1.0 - totalAlpha) * a;
       }
@@ -316,7 +334,7 @@ function VolumetricNebula({ anchor, radius, hue, opacity }: {
     material.uniforms.uCamPos.value.copy(state.camera.position);
     material.uniforms.uOpacity.value = opacity;
     material.uniforms.uCenter.value.set(anchor.x * s, anchor.y * s, anchor.z * s);
-    material.uniforms.uRadius.value = radius * s * 0.14;
+    material.uniforms.uRadius.value = radius * s * 0.22;
   });
 
   if (opacity <= 0.01) return null;
@@ -326,14 +344,14 @@ function VolumetricNebula({ anchor, radius, hue, opacity }: {
       position={[anchor.x * scale, anchor.y * scale, anchor.z * scale]}
       material={material}
     >
-      <sphereGeometry args={[radius * scale * 0.14, 24, 12]} />
+      <sphereGeometry args={[radius * scale * 0.22, 32, 16]} />
     </mesh>
   );
 }
 
 export function CosmicVolumetricNebulae({ anchors }: { anchors: THREE.Vector3[] }) {
   const { progress, activeMode } = useUniverseStore();
-  const opacity = activeMode === 'timeline' ? smoothstep(72, 88, progress) * 0.28 : 0;
+  const opacity = activeMode === 'timeline' ? smoothstep(72, 88, progress) * 0.65 : 0;
 
   if (opacity <= 0.01) return null;
 
@@ -362,7 +380,7 @@ export function CosmicVolumetricNebulae({ anchors }: { anchors: THREE.Vector3[] 
 //    Each anchor connects to its 3 nearest neighbors with glowing threads
 // ═══════════════════════════════════════════════════════════════════
 
-const FILAMENT_PARTICLES_PER_LINK = 55;
+const FILAMENT_PARTICLES_PER_LINK = 90;
 const MAX_NEIGHBORS = 3;
 
 function buildFilamentField(anchors: THREE.Vector3[], anchorScales: Float32Array) {
@@ -468,8 +486,8 @@ function makeFilamentMaterial() {
         // Subtle pulsing along filaments
         float pulse = 0.85 + 0.15 * sin(uTime * 0.4 + seed * 40.0);
         vAlpha = alpha * uOpacity * pulse;
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = size * uPixelRatio * (180.0 / max(40.0, -mvPosition.z));
+        // Garante um tamanho mínimo visível para os filamentos da teia cósmica
+        gl_PointSize = max(1.5 * uPixelRatio, size * uPixelRatio * (220.0 / max(40.0, -mvPosition.z)));
         gl_Position = projectionMatrix * mvPosition;
       }
     `,

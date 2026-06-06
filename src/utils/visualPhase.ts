@@ -48,11 +48,11 @@ function getCameraDistance(progress: number) {
   if (progress < 36) return 12.1 + smoothstep(22, 36, progress) * 150;
   if (progress < 58) return 162.1 + smoothstep(36, 58, progress) * 100;
   
-  // 48-100%: Visão de larga escala (fora)
-  if (progress < 65) return 262.1 + smoothstep(48, 65, progress) * 45;
-  if (progress < 75) return 307.1 + smoothstep(65, 75, progress) * 50;
-  if (progress < 85) return 357.1 - smoothstep(75, 85, progress) * 50;
-  return 307.1 + smoothstep(85, 100, progress) * 180;
+  // 48-100%: Visão de larga escala (fora) com recuo contínuo sem parar
+  if (progress < 65) return 262.1 + smoothstep(48, 65, progress) * 45; // 262.1 a 307.1
+  if (progress < 75) return 307.1 + smoothstep(65, 75, progress) * 50; // 307.1 a 357.1
+  if (progress < 85) return 357.1 + smoothstep(75, 85, progress) * 50; // 357.1 a 407.1 (continua recuando)
+  return 407.1 + smoothstep(85, 100, progress) * 1280; // 407.1 a 1687.1 (zoom-out total majestoso)
 }
 
 export function getVisualProfile(progress: number): VisualProfile {

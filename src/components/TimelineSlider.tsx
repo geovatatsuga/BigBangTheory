@@ -9,20 +9,20 @@ export default function TimelineSlider() {
 
   return (
     <div className="relative flex h-20 w-full items-center pt-4">
-      <div className="absolute top-0 left-0 right-0 flex items-center justify-center">
-        <div className="max-w-full truncate rounded border border-blue-200/15 bg-slate-950/75 px-3 py-1 text-center shadow-[0_0_18px_rgba(59,130,246,0.18)]">
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-blue-100">{cosmicAge}</span>
-          <span className="mx-2 text-blue-300/50">/</span>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cyan-100">{currentMilestone.stateLabel}</span>
+      <div className="absolute top-0 left-0 right-0 flex items-center justify-center -translate-y-6">
+        <div className="max-w-full truncate rounded-full border border-blue-500/20 bg-slate-950/90 px-4 py-1.5 text-center shadow-[0_0_20px_rgba(59,130,246,0.22)]">
+          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-blue-300 font-bold">{cosmicAge}</span>
+          <span className="mx-2 text-blue-500/30">/</span>
+          <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-200">{currentMilestone.stateLabel}</span>
         </div>
       </div>
-      <div className="absolute h-1.5 w-full rounded-full bg-slate-950/90 shadow-inner" />
+      <div className="absolute h-1 w-full rounded-full bg-slate-950/90 shadow-inner" />
       <div
-        className="absolute h-1.5 rounded-full bg-gradient-to-r from-blue-500 via-cyan-300 to-amber-200 shadow-[0_0_22px_rgba(96,165,250,0.45)] transition-all duration-100"
+        className="absolute h-1 rounded-full bg-gradient-to-r from-blue-500 via-cyan-300 to-amber-200 shadow-[0_0_22px_rgba(96,165,250,0.45)] transition-all duration-100"
         style={{ width: `${progress}%` }}
       />
       <div
-        className="absolute -ml-2 h-4 w-4 rounded-full border border-white bg-blue-200 shadow-[0_0_20px_rgba(147,197,253,0.82)] transition-all duration-100"
+        className="absolute -ml-2 h-4 w-4 rounded-full border border-white bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.85)] transition-all duration-100"
         style={{ left: `${progress}%` }}
       />
 
@@ -46,16 +46,16 @@ export default function TimelineSlider() {
             }`}
             style={{ left: `${milestone.progress}%` }}
           >
-            <div className="h-3 w-px bg-cyan-200/70" />
-            <div className="whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.12em] text-blue-100/80">
+            <div className="h-2.5 w-px bg-blue-500/40" />
+            <div className="whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.14em] text-slate-500 font-semibold">
               {milestone.timeLabel}
             </div>
           </div>
         ))}
         <div className="absolute right-0 top-0 flex flex-col items-end gap-1">
-          <div className="h-3 w-px bg-cyan-200/70" />
-          <div className="whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.12em] text-blue-100/80">
-            13,8 bi anos
+          <div className="h-2.5 w-px bg-blue-500/40" />
+          <div className="whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.14em] text-slate-500 font-semibold">
+            13.8 Bi Anos
           </div>
         </div>
       </div>

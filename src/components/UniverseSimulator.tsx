@@ -7,6 +7,9 @@ import CameraDirector from './universe/CameraDirector';
 import { CenterlessMarker, CinematicHud } from './universe/SceneHud';
 import { applyPhaseColor, getParticleAlpha, getParticleSize, getScale } from './universe/particleAppearance';
 import { BloomPostProcessing, CosmicVolumetricNebulae, CosmicWebFilaments, StromgrenBubbles } from './universe/CosmicEffects';
+import ActiveGalacticNucleus from './universe/ActiveGalacticNucleus';
+import SupernovaSpaceBackground from './universe/SupernovaSpaceBackground';
+import CosmicSupercluster from './universe/CosmicSupercluster';
 
 const NUM_PARTICLES = 24000;
 const BOUNDS = 820;
@@ -78,7 +81,8 @@ function makeGlowMaterial() {
       uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
       uRedshift: { value: 0 },
       uProgress: { value: 0 },
-      uIsNebula: { value: 0 }
+      uIsNebula: { value: 0 },
+      uOpacity: { value: 1.0 }
     },
     vertexShader: `
       attribute float alpha;
@@ -99,7 +103,8 @@ function makeGlowMaterial() {
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
         vDist = -mvPosition.z;
         float twinkle = 0.88 + 0.12 * sin(uTime * 2.0 + seed * 23.0);
-        gl_PointSize = size * twinkle * uPixelRatio * (230.0 / max(36.0, -mvPosition.z));
+        // Garante um tamanho mínimo visível de 0.7 * uPixelRatio ao afastar, mas limita o máximo a 4.5 * uPixelRatio para as estrelas nunca virarem bolhas gigantes artificiais
+        gl_PointSize = clamp(size * twinkle * uPixelRatio * (120.0 / max(30.0, -mvPosition.z)), 0.7 * uPixelRatio, 4.5 * uPixelRatio);
         gl_Position = projectionMatrix * mvPosition;
       }
     `,
@@ -113,6 +118,7 @@ function makeGlowMaterial() {
       uniform float uProgress;
       uniform float uTime;
       uniform float uIsNebula;
+      uniform float uOpacity;
 
       vec3 applyRedshift(vec3 col, float z) {
         float stretch = 1.0 + z;
@@ -134,11 +140,10 @@ function makeGlowMaterial() {
         // Forma difusa (gás / plasma inicial)
         float gasShape = smoothstep(0.5, 0.0, dist);
         
-        // Forma estelar (pontos com raios)
+        // Forma estelar (pontos com brilho circular limpo, sem cruzes artificiais)
         float core = smoothstep(0.15, 0.0, dist);
-        float spikes = max(0.0, 1.0 - abs(uv.x) * 15.0) * max(0.0, 1.0 - abs(uv.y) * 2.0)
-                     + max(0.0, 1.0 - abs(uv.y) * 15.0) * max(0.0, 1.0 - abs(uv.x) * 2.0);
-        float starShape = core + spikes * 0.2 * smoothstep(0.5, 0.2, dist);
+        float halo = smoothstep(0.5, 0.08, dist) * 0.42;
+        float starShape = core + halo;
 
         if (uIsNebula > 0.5) {
           // Nebulosas são sempre nuvens difusas de gás
@@ -155,7 +160,7 @@ function makeGlowMaterial() {
         }
 
         if (dist > 0.5) discard;
-        float alpha = vAlpha * shape;
+        float alpha = vAlpha * shape * uOpacity;
         vec3 col = vColor * (1.0 + (uProgress < 22.0 ? 0.8 : 0.2));
 
         float z = clamp(vDist / 900.0, 0.0, 1.8) * uRedshift;
@@ -349,11 +354,23 @@ function createParticleField(): ParticleField {
                 218, 52, 38, 20, 6, 56, 208, 46, 30, 14, 222, 54, 36, 22, 4, 49, 212, 44, 26, 9];
 
   for (let a = 0; a < NUM_ANCHORS; a++) {
+    if (a === 0) {
+      anchors.push(new THREE.Vector3(0, 0, 0));
+      anchorArms[0]  = 4;
+      anchorType[0]  = 0; // grand design spiral
+      anchorTwist[0] = 0.055;
+      anchorTiltX[0] = 0.8;
+      anchorTiltZ[0] = -0.2;
+      anchorHue[0]   = 215;
+      anchorScale[0] = 1.35;
+      continue;
+    }
+
     // Fibonacci sphere mapping for even distribution
     const goldenRatio = (1 + Math.sqrt(5)) / 2;
     const phi = Math.acos(1 - 2 * (a + 0.5) / NUM_ANCHORS);
     const theta = 2 * Math.PI * a / goldenRatio;
-    const r = BOUNDS * (0.24 + rng() * 0.44); // keep away from extreme edges
+    const r = BOUNDS * (0.42 + rng() * 0.54); // keep away from extreme edges
     const jx = (rng() - 0.5) * BOUNDS * 0.14;
     const jy = (rng() - 0.5) * BOUNDS * 0.16;
     const jz = (rng() - 0.5) * BOUNDS * 0.14;
@@ -458,14 +475,33 @@ function CosmicParticles({ field }: { field: ParticleField }) {
     const phase = getVisualPhase(progress);
     const time = state.clock.elapsedTime;
     const selected = observerIndex ?? Math.floor(NUM_PARTICLES * 0.38);
-    const lastAppearance = lastAppearanceRef.current;
-    const shouldUpdateAppearance =
-      Math.abs(progress - lastAppearance.progress) > 0.35 ||
-      lastAppearance.activeMode !== activeMode ||
-      lastAppearance.selected !== selected;
+    const shouldUpdateAppearance = true;
     const observerX = activeMode === 'centerless' ? field.basePositions[selected * 3] * scale : 0;
     const observerY = activeMode === 'centerless' ? field.basePositions[selected * 3 + 1] * scale : 0;
     const observerZ = activeMode === 'centerless' ? field.basePositions[selected * 3 + 2] * scale : 0;
+
+    const pressure = smoothstep(0, 4, progress);
+    const agitation = 1 + pressure * 2.4;
+    const isBigBang = phase === 'big-bang';
+    const isPlasma = phase === 'plasma';
+    const isBigBangOrPlasma = isBigBang || isPlasma;
+    const flowStrength = isBigBangOrPlasma ? (1.0 - smoothstep(18, 24, progress)) : 0;
+    const flowTime = time * 0.8;
+
+    const inJitterRange1 = progress >= 4 && progress < 68;
+    const turbulence = inJitterRange1 ? smoothstep(5, 22, progress) * (1 - smoothstep(24, 66, progress) * 0.92) : 0;
+    const jitter1 = inJitterRange1 ? THREE.MathUtils.lerp(0, 42, turbulence) : 0;
+
+    const inJitterRange2 = progress >= 42 && progress < 70;
+    const calmDrift = inJitterRange2 ? 3 * (1 - smoothstep(52, 68, progress)) : 0;
+    const collapseDrift = inJitterRange2 ? 1.4 * smoothstep(56, 72, progress) : 0;
+    const jitter2 = inJitterRange2 ? (calmDrift + collapseDrift) : 0;
+
+    const isLatePhase = phase === 'first-stars' || phase === 'galaxies' || phase === 'spiral-clusters' || phase === 'cosmic-web';
+    const formation = isLatePhase ? smoothstep(62, 96, progress) : 0;
+    const mature    = isLatePhase ? smoothstep(70, 96, progress) : 0;
+    const spiralT   = isLatePhase ? (phase === 'spiral-clusters' ? smoothstep(82, 92, progress) : (phase === 'cosmic-web' ? 1 : 0)) : 0;
+    const armPull   = isLatePhase ? (formation * smoothstep(62, 96, progress)) : 0;
 
     for (let i = 0; i < NUM_PARTICLES; i++) {
       const base = i * 3;
@@ -474,21 +510,9 @@ function CosmicParticles({ field }: { field: ParticleField }) {
       let bx = field.basePositions[base];
       let by = field.basePositions[base + 1];
       let bz = field.basePositions[base + 2];
-      const pressure = smoothstep(0, 4, progress);
-      const agitation = 1 + pressure * 2.4;
-      const knot = 8 + Math.sin(time * 12 * agitation + seed * 50) * (2.5 + pressure * 4.5);
-      const theta = seed * Math.PI * 2 * 19;
-      const wobble = Math.sin(time * (13 + pressure * 18) + seed * 120);
-      const shear = Math.sin(time * 21 + seed * 160) * pressure;
-      const collapsePulse = 1 - Math.abs(Math.sin(time * 9.5 + seed * 9)) * pressure * 0.28;
-      const clumpX = (Math.cos(theta + wobble * 0.62 + shear * 0.35) * knot + Math.sin(seed * 80 + time * 18) * (3 + pressure * 8)) * collapsePulse;
-      const clumpY = (Math.sin(theta * 1.7 + wobble * 0.48) * knot * 0.72 + Math.cos(seed * 90 + time * 16) * (3 + pressure * 7)) * collapsePulse;
-      const clumpZ = (Math.sin(theta + seed * 20 + shear * 0.45) * knot + Math.sin(seed * 70 + time * 19) * (3 + pressure * 8)) * collapsePulse;
 
-      if (phase === 'big-bang' || phase === 'plasma') {
+      if (isBigBangOrPlasma) {
         // Movimento fluido e viscoso de redemoinho (Sopa de Quarks)
-        const flowStrength = 1.0 - smoothstep(18, 24, progress);
-        const flowTime = time * 0.8;
         const swirlX = Math.sin(flowTime + seed * 10.0 + bz * 0.05) * 8.0 * flowStrength;
         const swirlY = Math.cos(flowTime + seed * 12.0 + bx * 0.05) * 8.0 * flowStrength;
         const swirlZ = Math.sin(flowTime + seed * 14.0 + by * 0.05) * 8.0 * flowStrength;
@@ -497,37 +521,32 @@ function CosmicParticles({ field }: { field: ParticleField }) {
         by += swirlY;
         bz += swirlZ;
         
-        if (phase === 'big-bang') {
+        if (isBigBang) {
+          const knot = 8 + Math.sin(time * 12 * agitation + seed * 50) * (2.5 + pressure * 4.5);
+          const theta = seed * Math.PI * 2 * 19;
+          const wobble = Math.sin(time * (13 + pressure * 18) + seed * 120);
           bx += Math.sin(theta + wobble * 0.62) * knot;
           by += Math.sin(theta * 1.7 + wobble * 0.48) * knot;
           bz += Math.sin(theta + seed * 20) * knot;
         }
       }
 
-      if (progress >= 4 && progress < 68) {
-        const turbulence = smoothstep(5, 22, progress) * (1 - smoothstep(24, 66, progress) * 0.92);
-        const jitter = THREE.MathUtils.lerp(0, 42, turbulence); // Aumentado o jitter
-        bx += Math.sin(time * 2.1 + seed * 80) * jitter;
-        by += Math.cos(time * 1.9 + seed * 90) * jitter * 0.7;
-        bz += Math.sin(time * 2.3 + seed * 70) * jitter;
+      if (inJitterRange1) {
+        bx += Math.sin(time * 2.1 + seed * 80) * jitter1;
+        by += Math.cos(time * 1.9 + seed * 90) * jitter1 * 0.7;
+        bz += Math.sin(time * 2.3 + seed * 70) * jitter1;
       }
 
-      if (progress >= 42 && progress < 70) {
-        const calmDrift = 3 * (1 - smoothstep(52, 68, progress));
-        const collapseDrift = 1.4 * smoothstep(56, 72, progress);
-        const jitter = calmDrift + collapseDrift;
-        bx += Math.sin(time * 2.1 + seed * 80) * jitter;
-        by += Math.cos(time * 1.9 + seed * 90) * jitter * 0.7;
-        bz += Math.sin(time * 2.3 + seed * 70) * jitter;
+      if (inJitterRange2) {
+        bx += Math.sin(time * 2.1 + seed * 80) * jitter2;
+        by += Math.cos(time * 1.9 + seed * 90) * jitter2 * 0.7;
+        bz += Math.sin(time * 2.3 + seed * 70) * jitter2;
       }
 
-      if (phase === 'first-stars' || phase === 'galaxies' || phase === 'spiral-clusters' || phase === 'cosmic-web') {
+      if (isLatePhase) {
         const centerX = field.clusterCenters[base];
         const centerY = field.clusterCenters[base + 1];
         const centerZ = field.clusterCenters[base + 2];
-        const formation = smoothstep(62, 96, progress);
-        const mature    = smoothstep(70, 96, progress);
-        const spiralT   = phase === 'spiral-clusters' ? smoothstep(82, 92, progress) : (phase === 'cosmic-web' ? 1 : 0);
 
         const rawDx = field.basePositions[base] - centerX;
         const rawDy = field.basePositions[base + 1] - centerY;
@@ -620,6 +639,15 @@ function CosmicParticles({ field }: { field: ParticleField }) {
             }
           }
 
+          // Rotação interna de cada galáxia (movimento circular padrão nos braços) ao longo do tempo
+          const spinSpeed = aIdx >= 0 ? (0.05 + ((aIdx * 17) % 100) * 0.001) * (aIdx % 2 === 0 ? 1.0 : -1.0) : 0.06;
+          const spinAngle = time * spinSpeed * formation; // A rotação surge dinamicamente na formação
+          const cosS = Math.cos(spinAngle), sinS = Math.sin(spinAngle);
+          const rx = gx * cosS - gz * sinS;
+          const rz = gx * sinS + gz * cosS;
+          gx = rx;
+          gz = rz;
+
           // Apply per-galaxy disk tilt so they face different directions in 3D
           const cosTX = Math.cos(tiltX), sinTX = Math.sin(tiltX);
           const cosTZ = Math.cos(tiltZ), sinTZ = Math.sin(tiltZ);
@@ -631,7 +659,6 @@ function CosmicParticles({ field }: { field: ParticleField }) {
           const gy3 = gx * sinTZ + gy2 * cosTZ;
           const gz3 = gz2;
 
-          const armPull = formation * smoothstep(62, 96, progress);
           bx = THREE.MathUtils.lerp(bx, centerX + gx3, armPull);
           by = THREE.MathUtils.lerp(by, centerY + gy3, armPull * 0.85);
           bz = THREE.MathUtils.lerp(bz, centerZ + gz3, armPull);
@@ -678,8 +705,8 @@ function CosmicParticles({ field }: { field: ParticleField }) {
         alphas[i] = 1;
         sizes[i] = 18;
       } else {
-        alphas[i] = getParticleAlpha(progress, seed, kind);
-        sizes[i] = getParticleSize(progress, seed, kind);
+        alphas[i] = getParticleAlpha(progress, seed, kind, time);
+        sizes[i] = getParticleSize(progress, seed, kind, time);
       }
 
       colors[base] = color.r;
@@ -947,8 +974,8 @@ function PlasmaFog() {
     if (!pointsRef.current) return;
     const ignition = smoothstep(2, 6, progress);
     const dense = smoothstep(4, 12, progress);
-    const cooling = smoothstep(22, 32, progress);
-    const fadeOut = 1 - smoothstep(28, 38, progress); // Some COMPLETAMENTE aos 38% (Transparência total)
+    const cooling = smoothstep(12, 22, progress);
+    const fadeOut = 1 - smoothstep(18, 25, progress); // Some COMPLETAMENTE aos 25% (Transparência total)
     const density = activeMode === 'timeline' ? Math.max(ignition * 0.95, dense) * fadeOut : 0;
     const alphas = pointsRef.current.geometry.attributes.alpha.array as Float32Array;
 
@@ -980,8 +1007,253 @@ function PlasmaFog() {
   );
 }
 
+function makeFarGalaxyMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
+      uOpacity: { value: 0 },
+    },
+    vertexShader: `
+      attribute float alpha;
+      attribute float size;
+      attribute float seed;
+      varying vec3 vColor;
+      varying float vAlpha;
+      varying float vSeed;
+      varying float vDist;
+
+      uniform float uPixelRatio;
+
+      void main() {
+        vColor = color;
+        vAlpha = alpha;
+        vSeed = seed;
+        vDist = length(position);
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = clamp(size * uPixelRatio * (150.0 / max(1.0, -mvPosition.z)), 0.8 * uPixelRatio, 8.0 * uPixelRatio);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor;
+      varying float vAlpha;
+      varying float vSeed;
+      varying float vDist;
+      uniform float uOpacity;
+      uniform float uTime;
+
+      void main() {
+        vec2 uv = gl_PointCoord - vec2(0.5);
+        float dist = length(uv);
+        if (dist > 0.5) discard;
+
+        // Glow com decaimento circular suave
+        float glow = smoothstep(0.5, 0.0, dist);
+
+        // Desvio para o vermelho (redshift) conforme o objeto está mais no fundo (distância 1100 a 2600)
+        float redshift = smoothstep(1100.0, 2600.0, vDist);
+        vec3 baseColor = vColor;
+        vec3 redshiftColor = vec3(baseColor.r * 1.5, baseColor.g * 0.22, baseColor.b * 0.42);
+        vec3 finalColor = mix(baseColor, redshiftColor, redshift);
+
+        // Brilho cintilante individual
+        float twinkle = 0.80 + 0.20 * sin(uTime * 3.0 + vSeed * 42.0);
+
+        gl_FragColor = vec4(finalColor * 2.2, glow * vAlpha * uOpacity * twinkle);
+      }
+    `,
+    vertexColors: true,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+}
+
+const FAR_GALAXY_COUNT = 2500; // Aumentado para 2500 galáxias para maior densidade visual
+const farGalaxyData = (() => {
+  const positions = new Float32Array(FAR_GALAXY_COUNT * 3);
+  const colors    = new Float32Array(FAR_GALAXY_COUNT * 3);
+  const sizes     = new Float32Array(FAR_GALAXY_COUNT);
+  const alphas    = new Float32Array(FAR_GALAXY_COUNT);
+  const seeds     = new Float32Array(FAR_GALAXY_COUNT);
+  const rng       = lcg(98765);
+
+  // Criamos 15 centros de aglomerados para simular a Teia Cósmica (conglomerado)
+  const numClusters = 15;
+  const clusterCenters: THREE.Vector3[] = [];
+  for (let c = 0; c < numClusters; c++) {
+    const theta = rng() * Math.PI * 2;
+    const phi = Math.acos(rng() * 2 - 1);
+    const r = 350 + rng() * 1850; // Distância radial entre 350 e 2200
+    clusterCenters.push(new THREE.Vector3(
+      Math.sin(phi) * Math.cos(theta) * r,
+      Math.cos(phi) * r * 0.7,
+      Math.sin(phi) * Math.sin(theta) * r
+    ));
+  }
+
+  const GALAXY_COUNT = 50;
+  const POINTS_PER_GALAXY = FAR_GALAXY_COUNT / GALAXY_COUNT; // 50
+
+  for (let g = 0; g < GALAXY_COUNT; g++) {
+    const center = clusterCenters[Math.floor(rng() * numClusters)];
+    // offset do centro da galáxia em relação ao centro do superaglomerado
+    const rOffset = 20 + Math.pow(rng(), 1.5) * 120;
+    const tG = rng() * Math.PI * 2;
+    const pG = Math.acos(rng() * 2 - 1);
+    const cx = center.x + Math.sin(pG) * Math.cos(tG) * rOffset;
+    const cy = center.y + Math.cos(pG) * rOffset * 0.8;
+    const cz = center.z + Math.sin(pG) * Math.sin(tG) * rOffset;
+
+    // Tipo de galáxia e escala física
+    const typeRoll = rng();
+    const galaxyType = typeRoll < 0.45 ? 'spiral' : (typeRoll < 0.80 ? 'elliptical' : 'quasar');
+    const galaxyRadius = 8 + rng() * 10;
+    const tiltX = rng() * Math.PI * 2;
+    const tiltZ = rng() * Math.PI * 2;
+
+    for (let p = 0; p < POINTS_PER_GALAXY; p++) {
+      const idx = g * POINTS_PER_GALAXY + p;
+      const seed = rng();
+      seeds[idx] = seed;
+
+      let lx = 0, ly = 0, lz = 0;
+      let starColor = new THREE.Color();
+      let starSize = 1.0;
+
+      if (galaxyType === 'spiral') {
+        const arms = rng() < 0.5 ? 2 : 4;
+        const twist = 0.08 + rng() * 0.12;
+        const isCore = seed < 0.22;
+        const localRadius = Math.pow(seed, 1.4) * galaxyRadius;
+
+        if (isCore) {
+          const t = rng() * Math.PI * 2;
+          const ph = Math.acos(rng() * 2 - 1);
+          const br = Math.pow(rng(), 2.0) * galaxyRadius * 0.15; // Concentra mais no núcleo
+          lx = Math.sin(ph) * Math.cos(t) * br;
+          ly = Math.cos(ph) * br * 0.7;
+          lz = Math.sin(ph) * Math.sin(t) * br;
+          starColor.setHSL(0.08 + rng() * 0.04, 0.85, 0.65 + rng() * 0.15); // Amarelo
+          starSize = 3.5 + rng() * 2.5;
+        } else {
+          const arm = p % arms;
+          const armAngle = arm * ((Math.PI * 2) / arms);
+          const angle = armAngle + localRadius * twist + (rng() - 0.5) * 0.22;
+          lx = Math.cos(angle) * localRadius;
+          ly = (rng() - 0.5) * (galaxyRadius * 0.08); 
+          lz = Math.sin(angle) * localRadius;
+          
+          if (rng() < 0.65) {
+            starColor.setHSL(0.58 + rng() * 0.05, 0.72, 0.72 + rng() * 0.18); // Azul
+          } else {
+            starColor.setHSL(0.96 + rng() * 0.04, 0.85, 0.68 + rng() * 0.18); // Rosa
+          }
+          starSize = 1.1 + rng() * 1.3;
+        }
+      } 
+      else if (galaxyType === 'elliptical') {
+        const localRadius = Math.pow(seed, 1.2) * galaxyRadius;
+        const t = rng() * Math.PI * 2;
+        const ph = Math.acos(rng() * 2 - 1);
+        lx = Math.sin(ph) * Math.cos(t) * localRadius;
+        ly = Math.cos(ph) * localRadius * 0.48;
+        lz = Math.sin(ph) * Math.sin(t) * localRadius * 0.82;
+
+        starColor.setHSL(0.08 + rng() * 0.06, 0.75, 0.52 + rng() * 0.25); // Amarelo/Laranja
+        starSize = 1.3 + rng() * 1.7;
+      } 
+      else {
+        // Quasar
+        const isCore = seed < 0.45;
+        const isJet = !isCore && seed > 0.82;
+
+        if (isCore) {
+          lx = (rng() - 0.5) * galaxyRadius * 0.12;
+          ly = (rng() - 0.5) * galaxyRadius * 0.12;
+          lz = (rng() - 0.5) * galaxyRadius * 0.12;
+          starColor.setRGB(1.8, 1.7, 2.2); // Azul-branco
+          starSize = 3.0 + rng() * 3.0;
+        } else if (isJet) {
+          lx = (rng() - 0.5) * 0.2;
+          ly = (rng() - 0.5) * galaxyRadius * 2.0;
+          lz = (rng() - 0.5) * 0.2;
+          starColor.setHSL(0.58, 0.95, 0.75); // Azul jato
+          starSize = 2.2 + rng() * 1.5;
+        } else {
+          const t = rng() * Math.PI * 2;
+          const diskR = (0.12 + rng() * 0.68) * galaxyRadius;
+          lx = Math.cos(t) * diskR;
+          ly = (rng() - 0.5) * 0.3;
+          lz = Math.sin(t) * diskR;
+          starColor.setHSL(0.08 + rng() * 0.03, 0.95, 0.65); // Disco
+          starSize = 1.3 + rng() * 1.5;
+        }
+      }
+
+      // Rotação 3D local
+      const cosTX = Math.cos(tiltX), sinTX = Math.sin(tiltX);
+      const cosTZ = Math.cos(tiltZ), sinTZ = Math.sin(tiltZ);
+      const ly2 = ly * cosTX - lz * sinTX;
+      const lz2 = ly * sinTX + lz * cosTX;
+      const lx3 = lx * cosTZ - ly2 * sinTZ;
+      const ly3 = lx * sinTZ + ly2 * cosTZ;
+      const lz3 = lz2;
+
+      const x = cx + lx3;
+      const y = cy + ly3;
+      const z = cz + lz3;
+
+      positions[idx * 3]     = x;
+      positions[idx * 3 + 1] = y;
+      positions[idx * 3 + 2] = z;
+
+      colors[idx * 3]     = starColor.r;
+      colors[idx * 3 + 1] = starColor.g;
+      colors[idx * 3 + 2] = starColor.b;
+
+      // Atenuação da opacidade baseada na distância
+      const distToCenter = Math.sqrt(x*x + y*y + z*z);
+      const fadeOut = 1.0 - smoothstep(1800, 2600, distToCenter);
+      alphas[idx] = (0.35 + seed * 0.45) * fadeOut;
+      
+      sizes[idx] = starSize;
+    }
+  }
+  return { positions, colors, sizes, alphas, seeds };
+})();
+
+function FarFieldGalaxies() {
+  const { progress } = useUniverseStore();
+  const pointsRef = useRef<THREE.Points>(null);
+  const material = useMemo(() => makeFarGalaxyMaterial(), []);
+
+  useFrame((state) => {
+    if (!pointsRef.current) return;
+    material.uniforms.uTime.value = state.clock.elapsedTime;
+    
+    const opacity = smoothstep(62, 85, progress);
+    material.uniforms.uOpacity.value = opacity * 1.35;
+  });
+
+  if (smoothstep(62, 85, progress) <= 0.01) return null;
+
+  return (
+    <points ref={pointsRef} material={material}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" count={FAR_GALAXY_COUNT} array={farGalaxyData.positions} itemSize={3} />
+        <bufferAttribute attach="attributes-color"    count={FAR_GALAXY_COUNT} array={farGalaxyData.colors}    itemSize={3} />
+        <bufferAttribute attach="attributes-alpha"    count={FAR_GALAXY_COUNT} array={farGalaxyData.alphas}    itemSize={1} />
+        <bufferAttribute attach="attributes-size"     count={FAR_GALAXY_COUNT} array={farGalaxyData.sizes}     itemSize={1} />
+        <bufferAttribute attach="attributes-seed"     count={FAR_GALAXY_COUNT} array={farGalaxyData.seeds}     itemSize={1} />
+      </bufferGeometry>
+    </points>
+  );
+}
+
 // ── Background star-field: dense tiny stars fading in from first-stars phase ──
-const BG_STAR_COUNT = 9000;
+const BG_STAR_COUNT = 28000;
 const bgStarData = (() => {
   const positions = new Float32Array(BG_STAR_COUNT * 3);
   const colors    = new Float32Array(BG_STAR_COUNT * 3);
@@ -995,7 +1267,8 @@ const bgStarData = (() => {
     seeds[i]    = seed;
     const theta = rng() * Math.PI * 2;
     const phi   = Math.acos(rng() * 2 - 1);
-    const r     = BOUNDS * (0.52 + rng() * 0.48);
+    // Distribuição espacial tridimensional expandida (até ~3700 unidades) para cercar a câmera no zoom-out máximo
+    const r     = BOUNDS * (0.2 + rng() * 4.3);
     positions[i * 3]     = Math.sin(phi) * Math.cos(theta) * r;
     positions[i * 3 + 1] = Math.cos(phi) * r;
     positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * r;
@@ -1005,7 +1278,7 @@ const bgStarData = (() => {
     colors[i * 3]     = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
-    sizes[i]  = 0.7 + seed * 1.8;
+    sizes[i]  = 0.4 + seed * 1.4; // Estrelas ligeiramente mais finas e nítidas
     alphas[i] = 0;
   }
   return { positions, colors, sizes, alphas, seeds };
@@ -1020,6 +1293,7 @@ function BackgroundStarField() {
   useFrame((state) => {
     if (!pointsRef.current) return;
     material.uniforms.uTime.value = state.clock.elapsedTime;
+    material.uniforms.uProgress.value = progress;
     if (Math.abs(progress - lastProgressRef.current) < 0.3) return;
 
     const arr = pointsRef.current.geometry.attributes.alpha.array as Float32Array;
@@ -1247,8 +1521,8 @@ function BigBangCore() {
   const { progress } = useUniverseStore();
   const material = useMemo(() => makeImmersivePlasmaMaterial(), []);
   
-  // O plasma fluido/viscoso dura até a transparência (38%) e some gradativamente
-  const visibility = 1.0 - smoothstep(18, 38, progress);
+  // O plasma fluido/viscoso dura até a recombinação (25%) e some gradativamente
+  const visibility = 1.0 - smoothstep(15, 25, progress);
 
   useFrame((state) => {
     material.uniforms.uTime.value = state.clock.elapsedTime;
@@ -1312,8 +1586,8 @@ function CenterlessExpansionVectors({ field }: { field: ParticleField }) {
       const base = idx * 3;
       const target = new THREE.Vector3(field.basePositions[base], field.basePositions[base + 1], field.basePositions[base + 2]).multiplyScalar(scale).sub(obs);
       const dir = target.clone().normalize();
-      const start = target.clone().multiplyScalar(0.86);
-      const end = target.clone().add(dir.multiplyScalar(14));
+      const start = target.clone().multiplyScalar(0.72);
+      const end = target.clone().add(dir.multiplyScalar(24));
       const p = vectorIndex * 6;
       positions[p] = start.x;
       positions[p + 1] = start.y;
@@ -1333,8 +1607,52 @@ function CenterlessExpansionVectors({ field }: { field: ParticleField }) {
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" count={VECTOR_COUNT * 2} array={positions} itemSize={3} />
       </bufferGeometry>
-      <lineBasicMaterial color="#60a5fa" transparent opacity={0.65} blending={THREE.AdditiveBlending} />
+      {/* Vetores verdes e brilhantes combinando com o HUD de observador */}
+      <lineBasicMaterial color="#4ade80" transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} />
     </lineSegments>
+  );
+}
+
+function CenterlessObserverRing() {
+  const { activeMode } = useUniverseStore();
+  const ring1Ref = useRef<THREE.Mesh>(null);
+  const ring2Ref = useRef<THREE.Mesh>(null);
+
+  useFrame((state) => {
+    if (!ring1Ref.current || !ring2Ref.current || activeMode !== 'centerless') return;
+    const time = state.clock.elapsedTime;
+    
+    // Rotação em sentidos opostos
+    ring1Ref.current.rotation.z = time * 0.55;
+    ring2Ref.current.rotation.z = -time * 0.35;
+    
+    // Pulsação suave de escala baseada no tempo
+    const scale = 1.0 + Math.sin(time * 3.5) * 0.12;
+    ring1Ref.current.scale.setScalar(scale);
+  });
+
+  if (activeMode !== 'centerless') return null;
+
+  return (
+    <group position={[0, 0, 0]}>
+      {/* Círculo Holográfico Interno */}
+      <mesh ref={ring1Ref}>
+        <ringGeometry args={[14, 15.5, 32]} />
+        <meshBasicMaterial color="#22c55e" transparent opacity={0.68} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+      
+      {/* Círculo Holográfico Externo Fino */}
+      <mesh ref={ring2Ref}>
+        <ringGeometry args={[18, 18.5, 64]} />
+        <meshBasicMaterial color="#4ade80" transparent opacity={0.38} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+
+      {/* Glow central no ponto selecionado */}
+      <mesh>
+        <sphereGeometry args={[1.8, 16, 16]} />
+        <meshBasicMaterial color="#86efac" transparent opacity={0.75} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+    </group>
   );
 }
 
@@ -1346,6 +1664,7 @@ type ShowcaseGalaxyConfig = {
   twist: number;
   core: number;
   elliptical?: boolean;
+  colliding?: boolean;
   hueShift: number;
 };
 
@@ -1358,51 +1677,111 @@ function createShowcaseGalaxy(config: ShowcaseGalaxyConfig): ShowcaseField {
   const seeds = new Float32Array(count);
   const color = new THREE.Color();
 
+  const isColliding = config.colliding;
+  const companionX = config.radius * 0.95;
+  const companionY = config.radius * 0.42;
+  const companionZ = -config.radius * 0.15;
+
   for (let i = 0; i < count; i++) {
     const base = i * 3;
     const seed = Math.random();
-    const radius = Math.pow(Math.random(), config.elliptical ? 1.9 : 0.62) * config.radius;
-    const core = 1 - Math.min(1, radius / config.core);
-    const dustLane = !config.elliptical && Math.random() < 0.16;
-    const thickness = Math.max(2, config.depth - radius * 0.055);
+    seeds[i] = seed;
 
-    if (config.elliptical) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(Math.random() * 2 - 1);
-      const squash = 0.48 + seed * 0.22;
-      positions[base] = Math.sin(phi) * Math.cos(theta) * radius * 1.25;
-      positions[base + 1] = Math.cos(phi) * radius * squash * 0.62;
-      positions[base + 2] = Math.sin(phi) * Math.sin(theta) * radius * 0.82;
+    let x = 0, y = 0, z = 0;
+    let localRadius = 0;
+    let coreVal = 0;
+    let isCompanion = false;
+    let isBridge = false;
+
+    if (isColliding) {
+      if (i > count * 0.85) {
+        isBridge = true;
+        const t = (i - count * 0.85) / (count * 0.15); // [0..1]
+        const ctrlX = companionX * 0.4;
+        const ctrlY = companionY * 0.8 + 25;
+        const ctrlZ = companionZ * 0.4 - 15;
+
+        const mt = 1.0 - t;
+        x = mt * mt * 0 + 2.0 * mt * t * ctrlX + t * t * companionX;
+        y = mt * mt * 0 + 2.0 * mt * t * ctrlY + t * t * companionY;
+        z = mt * mt * 0 + 2.0 * mt * t * ctrlZ + t * t * companionZ;
+
+        x += (Math.random() - 0.5) * 15;
+        y += (Math.random() - 0.5) * 8;
+        z += (Math.random() - 0.5) * 15;
+
+        localRadius = config.radius * 0.5;
+        coreVal = 0;
+      } else if (i > count * 0.6) {
+        isCompanion = true;
+        localRadius = Math.pow(Math.random(), 0.65) * config.radius * 0.48;
+        coreVal = 1 - Math.min(1, localRadius / (config.core * 0.45));
+      } else {
+        localRadius = Math.pow(Math.random(), 0.62) * config.radius;
+        coreVal = 1 - Math.min(1, localRadius / config.core);
+      }
     } else {
-      const arm = i % config.arms;
-      const armAngle = arm * ((Math.PI * 2) / config.arms);
-      const swirl = radius * config.twist;
-      const noise = (Math.random() - 0.5) * (0.42 + radius * 0.007);
-      const angle = armAngle + swirl + noise;
-      positions[base] = Math.cos(angle) * radius + (Math.random() - 0.5) * thickness;
-      positions[base + 1] = (Math.random() - 0.5) * (dustLane ? 5 : thickness);
-      positions[base + 2] = Math.sin(angle) * radius * (0.32 + seed * 0.16) + (Math.random() - 0.5) * thickness;
+      localRadius = Math.pow(Math.random(), config.elliptical ? 1.9 : 0.62) * config.radius;
+      coreVal = 1 - Math.min(1, localRadius / config.core);
     }
+
+    const dustLane = !config.elliptical && !isBridge && Math.random() < 0.16;
+    const thickness = Math.max(2, config.depth - localRadius * 0.055);
+
+    if (!isBridge) {
+      if (config.elliptical) {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(Math.random() * 2 - 1);
+        const squash = 0.48 + seed * 0.22;
+        x = Math.sin(phi) * Math.cos(theta) * localRadius * 1.25;
+        y = Math.cos(phi) * localRadius * squash * 0.62;
+        z = Math.sin(phi) * Math.sin(theta) * localRadius * 0.82;
+      } else {
+        const armsCount = isCompanion ? 2 : config.arms;
+        const arm = i % armsCount;
+        const armAngle = arm * ((Math.PI * 2) / armsCount);
+        const swirl = localRadius * config.twist * (isCompanion ? 1.5 : 1.0);
+        const noise = (Math.random() - 0.5) * (0.42 + localRadius * 0.007);
+        const angle = armAngle + swirl + noise;
+        x = Math.cos(angle) * localRadius + (Math.random() - 0.5) * thickness;
+        y = (Math.random() - 0.5) * (dustLane ? 5 : thickness);
+        z = Math.sin(angle) * localRadius * (0.32 + seed * 0.16) + (Math.random() - 0.5) * thickness;
+
+        if (isCompanion) {
+          x += companionX;
+          y += companionY;
+          z += companionZ;
+        }
+      }
+    }
+
+    positions[base] = x;
+    positions[base + 1] = y;
+    positions[base + 2] = z;
 
     if (dustLane) {
       color.setHSL(0.08, 0.42, 0.2 + seed * 0.12);
       alphas[i] = 0.2 + seed * 0.18;
-      sizes[i] = 4 + seed * 7;
-    } else if (core > 0.25) {
-      color.setHSL(0.1 + config.hueShift * 0.04, 0.9, 0.62 + core * 0.2);
-      alphas[i] = 0.55 + core * 0.38;
-      sizes[i] = 5 + core * 12 + seed * 3;
+      // Tamanhos de estrelas reduzidos drasticamente para formar galáxias com grão fino e elegante, não bolas gigantes
+      sizes[i] = 0.6 + seed * 0.8;
+    } else if (coreVal > 0.25) {
+      color.setHSL(0.1 + config.hueShift * 0.04 + (isCompanion ? 0.05 : 0.0), 0.9, 0.62 + coreVal * 0.2);
+      alphas[i] = 0.55 + coreVal * 0.38;
+      sizes[i] = 1.2 + coreVal * 2.2 + seed * 0.6; // Max ~4.0 para evitar bolas gigantes sobrepostas no núcleo
+    } else if (isBridge) {
+      color.setHSL(0.58, 0.24, 0.72 + seed * 0.15);
+      alphas[i] = 0.18 + seed * 0.35;
+      sizes[i] = 0.4 + seed * 0.8;
     } else {
       const blueStar = seed > 0.72;
       color.setHSL(blueStar ? 0.58 : 0.08, blueStar ? 0.36 : 0.72, blueStar ? 0.78 : 0.62);
       alphas[i] = 0.28 + seed * 0.52;
-      sizes[i] = 2.4 + seed * 6.5;
+      sizes[i] = 0.6 + seed * 1.0;
     }
 
     colors[base] = color.r;
     colors[base + 1] = color.g;
     colors[base + 2] = color.b;
-    seeds[i] = seed;
   }
 
   return { count, positions, colors, alphas, sizes, seeds };
@@ -1423,23 +1802,28 @@ function ShowcaseGalaxy({
   scale?: number;
   drift?: number;
 }) {
+  const { progress } = useUniverseStore();
   const groupRef = useRef<THREE.Group>(null);
   const material = useMemo(() => makeGlowMaterial(), []);
   const field = useMemo(() => createShowcaseGalaxy(config), [config]);
 
   useFrame((state) => {
     material.uniforms.uTime.value = state.clock.elapsedTime;
+    material.uniforms.uProgress.value = progress;
+    // Fica invisível conforme uOpacity diminui, sem expandir do nada
+    material.uniforms.uOpacity.value = visible;
     if (!groupRef.current) return;
     groupRef.current.rotation.x = rotation[0] + Math.sin(state.clock.elapsedTime * 0.045 * drift) * 0.024;
     groupRef.current.rotation.y = rotation[1] + Math.sin(state.clock.elapsedTime * 0.06 * drift) * 0.028;
     groupRef.current.rotation.z = rotation[2] + state.clock.elapsedTime * 0.0035 * drift;
-    groupRef.current.scale.setScalar(visible * scale);
+    // Mantém a escala física real de expansão do Universo em vez de partir do zero!
+    groupRef.current.scale.setScalar(scale);
   });
 
   if (visible <= 0.01) return null;
 
   return (
-    <group ref={groupRef} position={position} rotation={rotation} scale={visible * scale}>
+    <group ref={groupRef} position={position} rotation={rotation} scale={scale}>
       <points material={material}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" count={field.count} array={field.positions} itemSize={3} />
@@ -1491,7 +1875,7 @@ const showcaseGalaxies = [
     rotation: [0.55, 0.75, 0.38] as [number, number, number],
     scale: 0.48,
     drift: -0.7,
-    config: { count: 3200, arms: 3, radius: 74, depth: 9, twist: 0.074, core: 40, hueShift: 0.5 }
+    config: { count: 4200, arms: 3, radius: 74, depth: 9, twist: 0.074, core: 40, colliding: true, hueShift: 0.5 }
   },
   {
     position: [158, -38, 18] as [number, number, number],
@@ -1572,7 +1956,8 @@ function ScaleJourney() {
     if (!groupRef.current) return;
     groupRef.current.position.y = -8 + Math.sin(state.clock.elapsedTime * 0.45) * 1.6;
     groupRef.current.position.z = 104;
-    groupRef.current.scale.setScalar(visible * 1.3);
+    // Escala acompanha a expansão física natural de Hubble, sem explodir de escala zero
+    groupRef.current.scale.setScalar(1.3 * getScale(progress));
   });
 
   if (visible <= 0.01) return null;
@@ -1602,7 +1987,7 @@ export default function UniverseSimulator() {
   return (
     <div className="absolute inset-0 z-0 h-full w-full bg-transparent">
       <Canvas
-        camera={{ position: [0, 16, 150], fov: 58 }}
+        camera={{ position: [0, 16, 150], fov: 58, far: 5000 }}
         dpr={[1, 1.35]}
         gl={{ antialias: false, alpha: false, powerPreference: 'high-performance' }}
         raycaster={PARTICLE_RAYCASTER}
@@ -1613,14 +1998,24 @@ export default function UniverseSimulator() {
         <BigBangCore />
         <PlasmaFog />
         <BackgroundStarField />
+        <CosmicSupercluster />
+        <SupernovaSpaceBackground />
+        <FarFieldGalaxies />
+        <ScaleJourney />
         <CosmicNebulaField />
         <TransitionEffects />
         <CosmicParticles field={field} />
+        <ActiveGalacticNucleus
+          position={[0, 0, 0]}
+          rotation={[0.94, 0.12, -0.26]}
+          scale={1.35}
+        />
         <PrimordialLensing anchors={field.anchors} />
         <CosmicVolumetricNebulae anchors={field.anchors} />
         <StromgrenBubbles anchors={field.anchors} />
         <CosmicWebFilaments anchors={field.anchors} anchorScales={field.anchorScale} />
         <CenterlessExpansionVectors field={field} />
+        <CenterlessObserverRing />
         <CameraDirector />
         <BloomPostProcessing />
       </Canvas>

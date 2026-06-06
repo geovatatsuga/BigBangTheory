@@ -38,23 +38,23 @@ export default function PlayControls() {
   }, [isPlaying]);
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-3">
       <button
         onClick={() => setIsPlaying(!isPlaying)}
-        className="control-primary"
+        className="h-10 w-10 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center hover:scale-105 transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)] cursor-pointer"
         title={isPlaying ? 'Pausar' : 'Reproduzir'}
       >
-        {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
+        {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
       </button>
       <button
         onClick={() => {
           setIsPlaying(false);
           setProgress(0);
         }}
-        className="control-secondary"
-        title="Voltar ao inicio"
+        className="h-10 w-10 rounded-full border border-slate-800 bg-slate-900/60 hover:bg-slate-900/90 text-slate-400 hover:text-white flex items-center justify-center hover:scale-105 transition-all cursor-pointer"
+        title="Voltar ao início"
       >
-        <RotateCcw size={15} />
+        <RotateCcw size={14} />
       </button>
     </div>
   );

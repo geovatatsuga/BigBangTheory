@@ -73,7 +73,16 @@ export function getCosmicAgeYears(progress: number) {
 
     if (clamped <= end.progress) {
       const t = smoothstep(start.progress, end.progress, clamped);
-      return start.years + (end.years - start.years) * t;
+      
+      // De 0% a 5% (Singularidade -> Inflação), usamos linear para evitar log de zero
+      if (start.years === 0 || end.years === 0) {
+        return start.years + (end.years - start.years) * t;
+      }
+      
+      // De 5% em diante, usamos escala logarítmica (base 10) para fluidez suave
+      const logStart = Math.log10(start.years);
+      const logEnd = Math.log10(end.years);
+      return Math.pow(10, logStart + (logEnd - logStart) * t);
     }
   }
 
